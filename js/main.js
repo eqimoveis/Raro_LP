@@ -73,16 +73,17 @@ async function onReady() {
       initPlantaZoom();
       initSectionAnimations(gsap);
 
-      // NÃO chamar ScrollTrigger.refresh() aqui — o hero tem altura CSS fixa
-      // e não precisa de recálculo. Um refresh tardio causa jank no hero.
+      ScrollTrigger.refresh();
     } catch (err) {
       console.error("Erro ao carregar módulos diferidos:", err);
     }
   };
 
-  // Aguarda 3s antes de carregar módulos secundários para não competir
-  // com o carregamento dos frames do hero na primeira visita.
-  setTimeout(loadDeferred, 3000);
+  if (window.requestIdleCallback) {
+    requestIdleCallback(() => loadDeferred());
+  } else {
+    setTimeout(loadDeferred, 200);
+  }
 }
 
 if (document.readyState === "loading") {

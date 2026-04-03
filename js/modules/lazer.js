@@ -30,7 +30,7 @@ export function initLazer(gsap) {
     rooftop: "Rooftop +150m",
   };
 
-  const AMENITY_MS = 6000; /* tempo por amenidade — duração do vídeo Kling */
+  const AMENITY_MS = 5000; /* tempo por amenidade — 5s máximo dos vídeos Marlon */
   const FADE_MS    = 220;  /* crossfade entre amenidades */
 
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

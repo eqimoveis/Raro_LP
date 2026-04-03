@@ -9,3 +9,34 @@ hero_old.js
 hero_history.txt
 diff.txt
 diff_subagent.txt
+convert_plantas.py
+
+# Frames nao usados (hero usa video agora)
+assets/frames/
+assets/frames-mobile/
+assets/frames-webp/
+assets/frames-mobile-webp/
+
+# Videos originais nao usados no site (apenas _web sao referenciados)
+assets/amenidades-marlon/marlon_academia.mp4
+assets/amenidades-marlon/marlon_cowork.mp4
+assets/amenidades-marlon/marlon_emporio.mp4
+assets/amenidades-marlon/marlon_espaço_beauty.mp4
+assets/amenidades-marlon/marlon_gourmet_externo.mp4
+assets/amenidades-marlon/marlon_gourmet_piscina_privatica.mp4
+assets/amenidades-marlon/marlon_hidromassagem.mp4
+assets/amenidades-marlon/marlon_pilates.mp4
+assets/amenidades-marlon/marlon_piscina_externa.mp4
+assets/amenidades-marlon/marlon_piscina_infantil.mp4
+assets/amenidades-marlon/marlon_restaurante_rooftop.mp4
+assets/amenidades-marlon/marlon_salao_de_festas.mp4
+assets/amenidades-marlon/marlon_sauna.mp4
+assets/amenidades-marlon/marlon_spa.mp4
+assets/amenidades-marlon/marlon_terraço.mp4
+assets/amenidades-marlon/marlon_yoga.mp4
+
+# Videos NF Raro nao usados no site
+Vídeos _ NF Raro/
+
+# Plantas PNG originais (substituidas por WebP)
+assets/images/plantas/*.png
