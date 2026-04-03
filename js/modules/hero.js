@@ -1,10 +1,11 @@
 /**
  * Hero — scroll-linked animation
  *
- * Desktop : video scrubbing (hero-desktop-seekable.mp4 · 15MB)
- *           Browser decode nativo, fluido desde o primeiro load.
+ * Desktop : frame scrubbing (assets/frames-webp/*.webp)
+ *           Mesmo approach do mobile: pré-carrega WebP, desenha no canvas.
+ *           Fluido, sem depender de video.currentTime seeking.
  *
- * Mobile  : frame scrubbing (assets/frames-mobile-webp/*.webp · ~19MB)
+ * Mobile  : frame scrubbing (assets/frames-mobile-webp/*.webp)
  *           WebP = 37% menor que JPG, carrega mais rápido.
  *           Exibe loading bar até 50 frames prontos → animação sempre fluida.
  */
@@ -48,53 +49,42 @@ function resizeCanvas(canvas, ctx) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   DESKTOP — video scrubbing
+   DESKTOP — frame scrubbing (WebP) — mesma técnica do mobile
    ══════════════════════════════════════════════════════════════════ */
-function initDesktopVideo(canvas, ctx, gsap, ScrollTrigger) {
+function initDesktopFrames(canvas, ctx, gsap, ScrollTrigger) {
+  const images = new Array(FRAME_COUNT).fill(null);
   let dims = { w: 0, h: 0 };
   let prog = 0;
   let ready = false;
+  let priorityPct = 0;
+  let lastKey = -1;
 
-  const video = document.createElement("video");
-  video.src = "assets/hero_animated/hero-desktop-seekable.mp4";
-  video.muted = true;
-  video.playsInline = true;
-  video.preload = "auto";
-  video.setAttribute("aria-hidden", "true");
-  Object.assign(video.style, { position:"absolute", width:"0", height:"0", opacity:"0", pointerEvents:"none" });
-  document.body.appendChild(video);
+  const framePath = (i) =>
+    `assets/frames-webp/frame-${String(i).padStart(FRAME_PAD, "0")}.webp`;
 
-  const draw = () => {
-    if (!dims.w || !dims.h) return;
-    if (!ready) {
-      const pct = video.buffered.length
-        ? video.buffered.end(video.buffered.length - 1) / (video.duration || 1)
-        : 0;
-      drawLoadingBar(ctx, dims.w, dims.h, pct);
-    } else {
-      coverFit(ctx, video, dims.w, dims.h);
-    }
+  const paint = (p) => {
+    const { w, h } = dims;
+    if (!w || !h) return;
+    if (!ready) { drawLoadingBar(ctx, w, h, priorityPct); return; }
+
+    const exact = Math.max(0, Math.min(1, p)) * (FRAME_COUNT - 1);
+    const idx1 = Math.floor(exact), idx2 = Math.min(idx1 + 1, FRAME_COUNT - 1);
+    const blend = exact - idx1;
+    const key = idx1 * 1024 + Math.round(blend * 1023);
+    if (key === lastKey) return;
+    lastKey = key;
+
+    ctx.clearRect(0, 0, w, h);
+    drawBlended(ctx, nearestFrame(images, idx1), idx2 !== idx1 ? nearestFrame(images, idx2) : null, blend, w, h);
   };
 
-  const seek = () => {
-    if (!ready || !video.duration) return;
-    // Desktop: progresso 0 = frame final (escuro/alto), progresso 1 = frame inicial
-    video.currentTime = (1 - Math.max(0, Math.min(1, prog))) * video.duration;
-  };
-
-  video.addEventListener("loadedmetadata", () => { ready = true; seek(); draw(); });
-  video.addEventListener("canplay", () => { if (!ready) { ready = true; seek(); draw(); } });
-  video.addEventListener("seeked", draw);
-  video.addEventListener("progress", () => { if (!ready) draw(); });
-  video.load();
-
-  const syncSize = () => { dims = resizeCanvas(canvas, ctx); draw(); };
+  const syncSize = () => { dims = resizeCanvas(canvas, ctx); lastKey = -1; paint(prog); };
   syncSize();
   window.addEventListener("resize", syncSize, { passive: true });
 
   ScrollTrigger.create({
     trigger: ".hero", start: "top top", end: "bottom bottom", scrub: true,
-    onUpdate(self) { prog = self.progress; seek(); }
+    onUpdate(self) { prog = self.progress; paint(prog); }
   });
 
   const hint = document.getElementById("hero-scroll-hint");
@@ -104,6 +94,49 @@ function initDesktopVideo(canvas, ctx, gsap, ScrollTrigger) {
       scrollTrigger: { trigger: ".hero", start: "top top", end: "20% top", scrub: true }
     });
   }
+
+  /* Carregamento com loading gate — idêntico ao mobile */
+  async function startLoad() {
+    // 1. Frame inicial
+    try {
+      const img = await loadImage(framePath(1));
+      images[0] = img;
+    } catch (e) { console.warn("Falha frame inicial desktop", e); }
+
+    // 2. Priority: frames 2-50
+    const priority = [];
+    for (let i = 2; i <= READY_THRESHOLD; i++) priority.push(i);
+
+    let done = 1;
+    await Promise.all(priority.map(i =>
+      loadImage(framePath(i)).then(img => {
+        images[i - 1] = img;
+        done++;
+        priorityPct = done / READY_THRESHOLD;
+        paint(prog);
+      }).catch(() => { done++; priorityPct = done / READY_THRESHOLD; paint(prog); })
+    ));
+
+    // Priority batch completo — libera animação
+    ready = true;
+    lastKey = -1;
+    paint(prog);
+
+    // 3. Restante em batches
+    const pSet = new Set([1, ...priority]);
+    const remaining = [];
+    for (let i = 1; i <= FRAME_COUNT; i++) { if (!pSet.has(i)) remaining.push(i); }
+
+    const BATCH = 20;
+    for (let i = 0; i < remaining.length; i += BATCH) {
+      const batch = remaining.slice(i, i + BATCH);
+      await Promise.all(batch.map(idx =>
+        loadImage(framePath(idx)).then(img => { images[idx - 1] = img; lastKey = -1; paint(prog); }).catch(() => {})
+      ));
+    }
+  }
+
+  startLoad();
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -235,7 +268,7 @@ export function initHero(gsap, ScrollTrigger) {
   if (IS_MOBILE()) {
     initMobileFrames(canvas, ctx, gsap, ScrollTrigger);
   } else {
-    initDesktopVideo(canvas, ctx, gsap, ScrollTrigger);
+    initDesktopFrames(canvas, ctx, gsap, ScrollTrigger);
   }
 
   return {};
