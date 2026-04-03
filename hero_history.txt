@@ -1,0 +1,279 @@
+﻿commit 63abc85b3f249c30ddd34c12c2a7a3bcf4e03042
+Author: arthurhenriqueg <85029788+arthurhenriqueg@users.noreply.github.com>
+Date:   Mon Mar 30 12:26:05 2026 -0300
+
+    commit holver hero
+
+diff --git a/js/modules/hero.js b/js/modules/hero.js
+index 6eeb8f1..6382bc2 100644
+--- a/js/modules/hero.js
++++ b/js/modules/hero.js
+@@ -26,7 +26,16 @@ function framePath(i) {
+ function loadImage(src) {
+   return new Promise((resolve, reject) => {
+     const img = new Image();
+-    img.onload  = () => resolve(img);
++    img.onload = () => {
++      // Pre-decodifica├º├úo ass├¡ncrona: retira o peso da renderiza├º├úo s├¡ncrona
++      if (img.decode) {
++        img.decode()
++          .then(() => resolve(img))
++          .catch(() => resolve(img)); // Fallback se o decode falhar
++      } else {
++        resolve(img);
++      }
++    };
+     img.onerror = () => reject();
+     img.src = src;
+   });
+@@ -57,33 +66,59 @@ async function loadFrames(onBatch) {
+     loadImage(framePath(i)).then(img => onBatch(i - 1, img)).catch(() => {})
+   ));
+ 
+-  // 3. Carregar o restante em batches para n├úo saturar a rede
++  // 3. Carregar o restante em batches quando o navegador estiver ocioso
+   const remaining = [];
+   const pSet = new Set([firstFrameIdx, ...priorityFrames]);
+   for (let i = 1; i <= FRAME_COUNT; i++) {
+     if (!pSet.has(i)) remaining.push(i);
+   }
+ 
+-  const BATCH_SIZE = 15;
+-  for (let i = 0; i < remaining.length; i += BATCH_SIZE) {
+-    const batch = remaining.slice(i, i + BATCH_SIZE);
+-    await Promise.all(batch.map(idx => 
++  let currentCursor = 0;
++  const BATCH_SIZE = 12;
++
++  const loadNextBatch = () => {
++    if (currentCursor >= remaining.length) return;
++    const batch = remaining.slice(currentCursor, currentCursor + BATCH_SIZE);
++    currentCursor += BATCH_SIZE;
++
++    Promise.all(batch.map(idx => 
+       loadImage(framePath(idx)).then(img => onBatch(idx - 1, img)).catch(() => {})
+-    ));
+-    // Pequena pausa para respiro da main thread se necess├írio
+-    if (i % 45 === 0) await new Promise(r => setTimeout(r, 10));
+-  }
++    )).then(() => {
++      if (window.requestIdleCallback) {
++        requestIdleCallback(loadNextBatch, { timeout: 2000 });
++      } else {
++        setTimeout(loadNextBatch, 150);
++      }
++    });
++  };
+ 
++  loadNextBatch();
+   return true;
+ }
+ 
+ /* ÔöÇÔöÇ Nearest-frame fallback (durante carregamento parcial) ÔöÇÔöÇ */
++/* ÔöÇÔöÇ Cache de busca exaustiva (otimiza├º├úo anti-jank) ÔöÇÔöÇ */
++let cachedNearestMap = new Map();
++
+ function nearestFrame(images, idx) {
+   if (images[idx]) return images[idx];
++  
++  if (cachedNearestMap.has(idx)) {
++    const cachedIdx = cachedNearestMap.get(idx);
++    if (images[cachedIdx]) return images[cachedIdx];
++  }
++
++  // Busca linear apenas se n├úo houver no cache ou se o cache expirou
+   for (let d = 1; d < images.length; d++) {
+     const lo = idx - d, hi = idx + d;
+-    if (lo >= 0           && images[lo]) return images[lo];
+-    if (hi < images.length && images[hi]) return images[hi];
++    if (lo >= 0 && images[lo]) {
++      cachedNearestMap.set(idx, lo);
++      return images[lo];
++    }
++    if (hi < images.length && images[hi]) {
++      cachedNearestMap.set(idx, hi);
++      return images[hi];
++    }
+   }
+   return null;
+ }
+@@ -170,10 +205,14 @@ export function initHero(gsap, ScrollTrigger) {
+       return;
+     }
+ 
++    // Prote├º├úo Full Stack: Clamp para evitar resets visuais nas bordas [0, 1]
++    const p = Math.max(0, Math.min(1, prog));
++
+     /* Desktop: reverso (├║ltimo ÔåÆ primeiro). Mobile: normal (primeiro ÔåÆ ├║ltimo). */
+     const exact = IS_MOBILE()
+-      ? prog * (FRAME_COUNT - 1)
+-      : (1 - prog) * (FRAME_COUNT - 1);
++      ? p * (FRAME_COUNT - 1)
++      : (1 - p) * (FRAME_COUNT - 1);
++      
+     const idx1  = Math.floor(exact);
+     const idx2  = Math.min(idx1 + 1, FRAME_COUNT - 1);
+     const blend = exact - idx1; /* [0, 1) */
+@@ -222,6 +261,8 @@ export function initHero(gsap, ScrollTrigger) {
+   function startLoad() {
+     loadFrames((frameIdx, img) => {
+       images[frameIdx] = img;
++      // Limpa o cache de vizinhos quando um novo frame entra
++      cachedNearestMap.clear();
+       anyLoaded = true;
+       loaded++;
+       loadedPct = loaded / FRAME_COUNT;
+
+commit 1569809422f4f30a5ea9d8611fb860592aae8082
+Author: arthurhenriqueg <85029788+arthurhenriqueg@users.noreply.github.com>
+Date:   Mon Mar 30 12:14:29 2026 -0300
+
+    commit holver hero
+
+diff --git a/js/modules/hero.js b/js/modules/hero.js
+index 5073939..6eeb8f1 100644
+--- a/js/modules/hero.js
++++ b/js/modules/hero.js
+@@ -32,23 +32,48 @@ function loadImage(src) {
+   });
+ }
+ 
+-/* ÔöÇÔöÇ Carregamento em batches ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
++/* ÔöÇÔöÇ Carregamento priorit├írio e em batches ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+ async function loadFrames(onBatch) {
+-  try { await loadImage(framePath(1)); } catch { return false; }
+-
+-  const BATCH = 20;
+-  for (let start = 1; start <= FRAME_COUNT; start += BATCH) {
+-    const end   = Math.min(start + BATCH - 1, FRAME_COUNT);
+-    const batch = [];
+-    for (let i = start; i <= end; i++) {
+-      batch.push(
+-        loadImage(framePath(i))
+-          .then(img => { onBatch(i - 1, img); })
+-          .catch(()  => {})
+-      );
+-    }
+-    await Promise.all(batch);
++  const firstFrameIdx = IS_MOBILE() ? 1 : FRAME_COUNT;
++  
++  // 1. Carregar o frame inicial IMEDIATAMENTE (bloqueia o loader at├® ter pelo menos um frame)
++  try { 
++    const firstImg = await loadImage(framePath(firstFrameIdx)); 
++    onBatch(firstFrameIdx - 1, firstImg);
++  } catch (e) {
++    console.warn("Falha ao carregar frame inicial", e);
++  }
++
++  // 2. Definir ordem de import├óncia (frames pr├│ximos ao in├¡cio do scroll primeiro)
++  const priorityFrames = [];
++  if (IS_MOBILE()) {
++    for (let i = 2; i <= 30; i++) priorityFrames.push(i);
++  } else {
++    for (let i = FRAME_COUNT - 1; i >= FRAME_COUNT - 30; i--) priorityFrames.push(i);
+   }
++
++  // Carregar os priorit├írios em paralelo
++  await Promise.all(priorityFrames.map(i => 
++    loadImage(framePath(i)).then(img => onBatch(i - 1, img)).catch(() => {})
++  ));
++
++  // 3. Carregar o restante em batches para n├úo saturar a rede
++  const remaining = [];
++  const pSet = new Set([firstFrameIdx, ...priorityFrames]);
++  for (let i = 1; i <= FRAME_COUNT; i++) {
++    if (!pSet.has(i)) remaining.push(i);
++  }
++
++  const BATCH_SIZE = 15;
++  for (let i = 0; i < remaining.length; i += BATCH_SIZE) {
++    const batch = remaining.slice(i, i + BATCH_SIZE);
++    await Promise.all(batch.map(idx => 
++      loadImage(framePath(idx)).then(img => onBatch(idx - 1, img)).catch(() => {})
++    ));
++    // Pequena pausa para respiro da main thread se necess├írio
++    if (i % 45 === 0) await new Promise(r => setTimeout(r, 10));
++  }
++
+   return true;
+ }
+ 
+@@ -214,25 +239,27 @@ export function initHero(gsap, ScrollTrigger) {
+   startLoad();
+ 
+   /* ÔöÇÔöÇ ScrollTrigger ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+-  ScrollTrigger.create({
+-    trigger: ".hero",
+-    start:   "top top",
+-    /*
+-     * end: "bottom bottom" ÔåÆ o trigger termina quando o fundo do .hero
+-     * atinge o fundo da viewport. Isso ocorre exatamente em
+-     * scroll = hero.height ÔêÆ viewportHeight = spacer.height.
+-     *
+-     * ├ë o mesmo instante em que o CSS sticky libera o canvas ÔÇö
+-     * garantindo que o v├¡deo chegue a progress=1 (├║ltimo frame)
+-     * ao mesmo tempo em que o elemento destrava e come├ºa a rolar.
+-     * Com "bottom top" o sticky liberava em ~69% do v├¡deo.
+-     */
+-    end:   "bottom bottom",
+-    scrub: true,
+-    onUpdate(self) {
+-      currentProg = self.progress;
+-      paint(currentProg);
+-    },
++  /* ÔöÇÔöÇ ScrollTrigger ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
++  const animObj = { prog: 0 };
++  
++  gsap.timeline({
++    scrollTrigger: {
++      trigger: ".hero",
++      start:   "top top",
++      /*
++       * end: "bottom bottom" ÔåÆ v. coment├írio anterior sobre pinning.
++       */
++      end:   "bottom bottom",
++      scrub: true,
++      onUpdate(self) {
++        currentProg = self.progress; 
++      }
++    }
++  })
++  .to(animObj, {
++    prog: 1,
++    ease: "none",
++    onUpdate: () => paint(animObj.prog)
+   });
+ 
+   /* ÔöÇÔöÇ Fade out scroll hint ÔöÇÔöÇ */
+
+commit 724ac07905f3db7b0edd230f54eff4a8189c9434
+Author: arthurhenriqueg <85029788+arthurhenriqueg@users.noreply.github.com>
+Date:   Mon Mar 30 11:45:09 2026 -0300
+
+    commit holver hero
+
+diff --git a/js/modules/hero.js b/js/modules/hero.js
+index 4d0ad3f..5073939 100644
+--- a/js/modules/hero.js
++++ b/js/modules/hero.js
+@@ -235,5 +235,20 @@ export function initHero(gsap, ScrollTrigger) {
+     },
+   });
+ 
++  /* ÔöÇÔöÇ Fade out scroll hint ÔöÇÔöÇ */
++  const hint = document.getElementById("hero-scroll-hint");
++  if (hint) {
++    gsap.to(hint, {
++      opacity: 0,
++      pointerEvents: "none",
++      scrollTrigger: {
++        trigger: ".hero",
++        start: "top top",
++        end: "20% top",
++        scrub: true,
++      }
++    });
++  }
++
+   return {};
+ }

@@ -1,0 +1,9 @@
+{
+  "name": "raro-praia-brava-lp",
+  "private": true,
+  "description": "Landing estática — use npm run dev (servidor HTTP obrigatório para ES modules)",
+  "scripts": {
+    "dev": "npx --yes serve@14 . -l 3000",
+    "start": "npx --yes serve@14 . -l 3000"
+  }
+}

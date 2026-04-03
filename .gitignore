@@ -1,0 +1,33 @@
+node_modules/
+.DS_Store
+dist/
+build/
+.env
+*.log
+.claude/
+hero_old.js
+hero_history.txt
+diff.txt
+diff_subagent.txt
+convert_webp.py
+compress_marlon.py
+# Frames JPG/WebP nao usados (desktop usa video, mobile usa frames-mobile-webp)
+assets/frames/
+assets/frames-mobile/
+assets/frames-webp/
+# Originais Marlon nao comprimidos (so usamos os _web.mp4)
+assets/amenidades-marlon/marlon_academia.mp4
+assets/amenidades-marlon/marlon_cowork.mp4
+assets/amenidades-marlon/marlon_emporio.mp4
+assets/amenidades-marlon/marlon_gourmet_externo.mp4
+assets/amenidades-marlon/marlon_gourmet_piscina_privatica.mp4
+assets/amenidades-marlon/marlon_hidromassagem.mp4
+assets/amenidades-marlon/marlon_pilates.mp4
+assets/amenidades-marlon/marlon_piscina_externa.mp4
+assets/amenidades-marlon/marlon_piscina_infantil.mp4
+assets/amenidades-marlon/marlon_restaurante_rooftop.mp4
+assets/amenidades-marlon/marlon_salao_de_festas.mp4
+assets/amenidades-marlon/marlon_sauna.mp4
+assets/amenidades-marlon/marlon_spa.mp4
+assets/amenidades-marlon/marlon_terraço.mp4
+assets/amenidades-marlon/marlon_yoga.mp4

@@ -1,0 +1,178 @@
+﻿diff --git a/js/modules/hero.js b/js/modules/hero.js
+index 6382bc2..a7704aa 100644
+--- a/js/modules/hero.js
++++ b/js/modules/hero.js
+@@ -13,7 +13,7 @@
+  */
+ 
+ const FRAME_COUNT = 241;
+-const FRAME_PAD   = 4;
++const FRAME_PAD = 4;
+ 
+ /* Mobile quando a viewport for menor que 768 px de largura */
+ const IS_MOBILE = () => window.matchMedia("(max-width: 767px)").matches;
+@@ -44,10 +44,10 @@ function loadImage(src) {
+ /* ÔöÇÔöÇ Carregamento priorit├írio e em batches ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+ async function loadFrames(onBatch) {
+   const firstFrameIdx = IS_MOBILE() ? 1 : FRAME_COUNT;
+-  
++
+   // 1. Carregar o frame inicial IMEDIATAMENTE (bloqueia o loader at├® ter pelo menos um frame)
+-  try { 
+-    const firstImg = await loadImage(framePath(firstFrameIdx)); 
++  try {
++    const firstImg = await loadImage(framePath(firstFrameIdx));
+     onBatch(firstFrameIdx - 1, firstImg);
+   } catch (e) {
+     console.warn("Falha ao carregar frame inicial", e);
+@@ -62,8 +62,8 @@ async function loadFrames(onBatch) {
+   }
+ 
+   // Carregar os priorit├írios em paralelo
+-  await Promise.all(priorityFrames.map(i => 
+-    loadImage(framePath(i)).then(img => onBatch(i - 1, img)).catch(() => {})
++  await Promise.all(priorityFrames.map(i =>
++    loadImage(framePath(i)).then(img => onBatch(i - 1, img)).catch(() => { })
+   ));
+ 
+   // 3. Carregar o restante em batches quando o navegador estiver ocioso
+@@ -81,8 +81,8 @@ async function loadFrames(onBatch) {
+     const batch = remaining.slice(currentCursor, currentCursor + BATCH_SIZE);
+     currentCursor += BATCH_SIZE;
+ 
+-    Promise.all(batch.map(idx => 
+-      loadImage(framePath(idx)).then(img => onBatch(idx - 1, img)).catch(() => {})
++    Promise.all(batch.map(idx =>
++      loadImage(framePath(idx)).then(img => onBatch(idx - 1, img)).catch(() => { })
+     )).then(() => {
+       if (window.requestIdleCallback) {
+         requestIdleCallback(loadNextBatch, { timeout: 2000 });
+@@ -102,7 +102,7 @@ let cachedNearestMap = new Map();
+ 
+ function nearestFrame(images, idx) {
+   if (images[idx]) return images[idx];
+-  
++
+   if (cachedNearestMap.has(idx)) {
+     const cachedIdx = cachedNearestMap.get(idx);
+     if (images[cachedIdx]) return images[cachedIdx];
+@@ -130,7 +130,7 @@ function drawFrame(ctx, img, w, h) {
+   const cr = w / h;
+   let dw, dh, dx, dy;
+   if (ir > cr) { dh = h; dw = h * ir; dx = (w - dw) / 2; dy = 0; }
+-  else          { dw = w; dh = w / ir; dx = 0; dy = (h - dh) / 2; }
++  else { dw = w; dh = w / ir; dx = 0; dy = (h - dh) / 2; }
+   ctx.drawImage(img, dx, dy, dw, dh);
+ }
+ 
+@@ -168,9 +168,9 @@ function drawLoadingBar(ctx, w, h, pct) {
+ 
+ function resizeCanvas(canvas, ctx) {
+   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+-  const w   = canvas.clientWidth;
+-  const h   = canvas.clientHeight;
+-  canvas.width  = Math.floor(w * dpr);
++  const w = canvas.clientWidth;
++  const h = canvas.clientHeight;
++  canvas.width = Math.floor(w * dpr);
+   canvas.height = Math.floor(h * dpr);
+   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+   return { w, h };
+@@ -183,12 +183,12 @@ export function initHero(gsap, ScrollTrigger) {
+ 
+   const ctx = canvas.getContext("2d");
+ 
+-  let images    = new Array(FRAME_COUNT).fill(null);
++  let images = new Array(FRAME_COUNT).fill(null);
+   let anyLoaded = false;
+   let loadedPct = 0;
+-  let lastDims  = { w: 0, h: 0 };
++  let lastDims = { w: 0, h: 0 };
+   let currentProg = 0;
+-  let lastMobile  = IS_MOBILE(); /* detecta mudan├ºa de breakpoint no resize */
++  let lastMobile = IS_MOBILE(); /* detecta mudan├ºa de breakpoint no resize */
+ 
+   /*
+    * lastKey: evita repinturas id├¬nticas.
+@@ -212,9 +212,9 @@ export function initHero(gsap, ScrollTrigger) {
+     const exact = IS_MOBILE()
+       ? p * (FRAME_COUNT - 1)
+       : (1 - p) * (FRAME_COUNT - 1);
+-      
+-    const idx1  = Math.floor(exact);
+-    const idx2  = Math.min(idx1 + 1, FRAME_COUNT - 1);
++
++    const idx1 = Math.floor(exact);
++    const idx2 = Math.min(idx1 + 1, FRAME_COUNT - 1);
+     const blend = exact - idx1; /* [0, 1) */
+ 
+     /* Dirty-check: s├│ redesenha se algo mudou */
+@@ -234,7 +234,7 @@ export function initHero(gsap, ScrollTrigger) {
+ 
+   function syncSize() {
+     lastDims = resizeCanvas(canvas, ctx);
+-    lastKey  = -1;
++    lastKey = -1;
+     paint(currentProg);
+   }
+ 
+@@ -246,11 +246,11 @@ export function initHero(gsap, ScrollTrigger) {
+     const nowMobile = IS_MOBILE();
+     if (nowMobile !== lastMobile) {
+       lastMobile = nowMobile;
+-      images    = new Array(FRAME_COUNT).fill(null);
++      images = new Array(FRAME_COUNT).fill(null);
+       anyLoaded = false;
+       loadedPct = 0;
+-      loaded    = 0;
+-      lastKey   = -1;
++      loaded = 0;
++      lastKey = -1;
+       startLoad();
+     }
+   }, { passive: true });
+@@ -266,7 +266,7 @@ export function initHero(gsap, ScrollTrigger) {
+       anyLoaded = true;
+       loaded++;
+       loadedPct = loaded / FRAME_COUNT;
+-      lastKey   = -1;
++      lastKey = -1;
+       paint(currentProg);
+     }).then(hasFrames => {
+       if (!hasFrames) {
+@@ -282,26 +282,26 @@ export function initHero(gsap, ScrollTrigger) {
+   /* ÔöÇÔöÇ ScrollTrigger ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+   /* ÔöÇÔöÇ ScrollTrigger ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+   const animObj = { prog: 0 };
+-  
++
+   gsap.timeline({
+     scrollTrigger: {
+       trigger: ".hero",
+-      start:   "top top",
++      start: "top top",
+       /*
+        * end: "bottom bottom" ÔåÆ v. coment├írio anterior sobre pinning.
+        */
+-      end:   "bottom bottom",
++      end: "bottom bottom",
+       scrub: true,
+       onUpdate(self) {
+-        currentProg = self.progress; 
++        currentProg = self.progress;
+       }
+     }
+   })
+-  .to(animObj, {
+-    prog: 1,
+-    ease: "none",
+-    onUpdate: () => paint(animObj.prog)
+-  });
++    .to(animObj, {
++      prog: 1,
++      ease: "none",
++      onUpdate: () => paint(animObj.prog)
++    });
+ 
+   /* ÔöÇÔöÇ Fade out scroll hint ÔöÇÔöÇ */
+   const hint = document.getElementById("hero-scroll-hint");

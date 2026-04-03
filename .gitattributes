@@ -1,0 +1,2 @@
+# Sem LFS - arquivos agora serão git objects normais
+# Isso garante que o Vercel consegue clonar sem depender de LFS quota

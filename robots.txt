@@ -1,0 +1,11 @@
+# RARO Praia Brava — robots.txt
+User-agent: *
+Allow: /
+Disallow: /assets/frames/
+Disallow: /assets/frames-mobile/
+
+# Sitemap
+Sitemap: https://rarobrava.com.br/sitemap.xml
+
+# Crawl-delay (cortesia para bots)
+Crawl-delay: 1
