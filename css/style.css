@@ -1731,6 +1731,38 @@ main>section:nth-of-type(10) {
       100% 100%,
       var(--ch-lg) 100%,
       0 calc(100% - var(--ch-lg)));
+  /* Placeholder enquanto o mapa carrega (evita tela preta) */
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2520 50%, #1a1a1a 100%);
+}
+
+/* Shimmer animado sobre o placeholder do mapa */
+.loc-map-solo__frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(165, 120, 64, 0.06) 40%,
+    rgba(165, 120, 64, 0.12) 50%,
+    rgba(165, 120, 64, 0.06) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: mapShimmer 2s ease-in-out infinite;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+
+/* Esconde o shimmer quando o iframe carregou */
+.loc-map-solo__frame.is-loaded::before {
+  opacity: 0;
+}
+
+@keyframes mapShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 @media (max-width: 599px) {
@@ -1747,7 +1779,14 @@ main>section:nth-of-type(10) {
   border: none;
   display: block;
   filter: grayscale(20%) contrast(1.05) saturate(0.9);
-  transition: filter 0.5s;
+  transition: filter 0.5s, opacity 0.8s ease;
+  z-index: 2;
+  opacity: 0;
+}
+
+/* Mostra o iframe com fade-in suave quando carregado */
+.loc-map-solo__frame.is-loaded .loc-map-solo__iframe {
+  opacity: 1;
 }
 
 .loc-map-solo__frame:hover .loc-map-solo__iframe {

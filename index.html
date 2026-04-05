@@ -75,7 +75,8 @@
   <!-- Resource Hints -->
   <link rel="preconnect" href="https://esm.sh" />
   <link rel="dns-prefetch" href="https://www.google.com" />
-  <link rel="dns-prefetch" href="https://maps.googleapis.com" />
+  <link rel="preconnect" href="https://maps.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://www.google.com" crossorigin />
   <link rel="dns-prefetch" href="https://wa.me" />
 
   <!-- Preload do primeiro frame da animação hero — inicia download antes do JS rodar -->
@@ -1183,9 +1184,9 @@
         <div class="loc-map-solo">
           <div class="loc-map-solo__frame">
             <iframe
-              src="https://www.google.com/maps/embed?pb=!4v1774996425660!6m8!1m7!1ssA8pyPtD4N2D70_eU7JNVg!2m2!1d-26.94158205093995!2d-48.64076302658485!3f92.76158543919976!4f9.506116465587965!5f0.7820865974627469"
+              data-src="https://www.google.com/maps/embed?pb=!4v1774996425660!6m8!1m7!1ssA8pyPtD4N2D70_eU7JNVg!2m2!1d-26.94158205093995!2d-48.64076302658485!3f92.76158543919976!4f9.506116465587965!5f0.7820865974627469"
               title="RARO Praia Brava — Rodovia Osvaldo Reis, 403, Praia Brava, Itajaí/SC" class="loc-map-solo__iframe"
-              style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+              style="border:0;" allowfullscreen="" referrerpolicy="no-referrer-when-downgrade"></iframe>
           </div>
           <p class="loc-map-solo__caption">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1539,6 +1540,31 @@
       <div class="gallery-zoom__counter" id="gallery-counter">1 / 1</div>
     </div>
   </div>
+
+  <!-- Lazy-load inteligente do Google Maps -->
+  <script>
+    (function () {
+      var frame = document.querySelector('.loc-map-solo__frame');
+      var iframe = frame && frame.querySelector('.loc-map-solo__iframe');
+      if (!iframe || !iframe.dataset.src) return;
+
+      /* Carrega o iframe quando a seção entra em ~400px do viewport */
+      var io = new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting) {
+          iframe.src = iframe.dataset.src;
+          iframe.removeAttribute('data-src');
+          io.disconnect();
+        }
+      }, { rootMargin: '400px' });
+      io.observe(frame);
+
+      /* Fade-in suave quando o mapa termina de carregar */
+      iframe.addEventListener('load', function () {
+        /* Espera extra para o Street View renderizar internamente */
+        setTimeout(function () { frame.classList.add('is-loaded'); }, 800);
+      });
+    })();
+  </script>
 
   <script type="module" src="js/main.js"></script>
 </body>
