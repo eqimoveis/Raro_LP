@@ -31,6 +31,39 @@ assets/amenidades-marlon/marlon_salao_de_festas.mp4
 assets/amenidades-marlon/marlon_sauna.mp4
 assets/amenidades-marlon/marlon_spa.mp4
 assets/amenidades-marlon/marlon_terraço.mp4
+node_modules/
+.DS_Store
+dist/
+build/
+.env
+*.log
+.claude/
+hero_old.js
+hero_history.txt
+diff.txt
+diff_subagent.txt
+convert_plantas.py
+
+# Frames JPG originais (substituidos por WebP)
+assets/frames/
+assets/frames-mobile/
+
+# Videos originais nao usados no site (apenas _web sao referenciados)
+assets/amenidades-marlon/marlon_academia.mp4
+assets/amenidades-marlon/marlon_cowork.mp4
+assets/amenidades-marlon/marlon_emporio.mp4
+assets/amenidades-marlon/marlon_espaço_beauty.mp4
+assets/amenidades-marlon/marlon_gourmet_externo.mp4
+assets/amenidades-marlon/marlon_gourmet_piscina_privatica.mp4
+assets/amenidades-marlon/marlon_hidromassagem.mp4
+assets/amenidades-marlon/marlon_pilates.mp4
+assets/amenidades-marlon/marlon_piscina_externa.mp4
+assets/amenidades-marlon/marlon_piscina_infantil.mp4
+assets/amenidades-marlon/marlon_restaurante_rooftop.mp4
+assets/amenidades-marlon/marlon_salao_de_festas.mp4
+assets/amenidades-marlon/marlon_sauna.mp4
+assets/amenidades-marlon/marlon_spa.mp4
+assets/amenidades-marlon/marlon_terraço.mp4
 assets/amenidades-marlon/marlon_yoga.mp4
 
 # Videos 3D NF Raro (nao usados no site)
@@ -38,3 +71,4 @@ Vídeos _ NF Raro/Vídeos 3D/
 
 # Plantas PNG originais (substituidas por WebP)
 assets/images/plantas/*.png
+assets/videos-marlon/*.mp4  

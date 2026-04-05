@@ -1,3 +1,5 @@
+import Hls from 'hls.js';
+
 /**
  * vidplayer.js — player customizado para a seção #filme
  *
@@ -14,38 +16,38 @@
  */
 
 export function initVidPlayer() {
-  const player   = document.getElementById('film-player');
+  const player = document.getElementById('film-player');
   if (!player) return;
 
-  const video    = document.getElementById('film-video');
-  const bigPlay  = document.getElementById('film-big-play');
-  const endCard  = document.getElementById('film-end-card');
-  const replayBtn= document.getElementById('film-replay');
-  const playBtn  = document.getElementById('film-play-btn');
-  const muteBtn  = document.getElementById('film-mute-btn');
-  const fsBtn    = document.getElementById('film-fs-btn');
-  const progBar  = document.getElementById('film-progress-bar');
+  const video = document.getElementById('film-video');
+  const bigPlay = document.getElementById('film-big-play');
+  const endCard = document.getElementById('film-end-card');
+  const replayBtn = document.getElementById('film-replay');
+  const playBtn = document.getElementById('film-play-btn');
+  const muteBtn = document.getElementById('film-mute-btn');
+  const fsBtn = document.getElementById('film-fs-btn');
+  const progBar = document.getElementById('film-progress-bar');
   const progFill = document.getElementById('film-progress-fill');
-  const progThumb= document.getElementById('film-progress-thumb');
-  const volSlider= document.getElementById('film-vol-slider');
-  const volFill  = document.getElementById('film-vol-fill');
-  const currentEl= document.getElementById('film-current');
-  const durationEl=document.getElementById('film-duration');
+  const progThumb = document.getElementById('film-progress-thumb');
+  const volSlider = document.getElementById('film-vol-slider');
+  const volFill = document.getElementById('film-vol-fill');
+  const currentEl = document.getElementById('film-current');
+  const durationEl = document.getElementById('film-duration');
 
   // ── Ícones play/pause dentro do botão de controle ──────────────────
-  const iconPlay  = playBtn.querySelector('.film-ctrl-icon--play');
+  const iconPlay = playBtn.querySelector('.film-ctrl-icon--play');
   const iconPause = playBtn.querySelector('.film-ctrl-icon--pause');
-  const iconVol   = muteBtn.querySelector('.film-ctrl-icon--vol');
+  const iconVol = muteBtn.querySelector('.film-ctrl-icon--vol');
   const iconMuted = muteBtn.querySelector('.film-ctrl-icon--muted');
 
   // ── Fontes dos vídeos ─────────────────────────────────────────────
-  const SRC_HORIZONTAL = video.getAttribute('src');
-  const SRC_VERTICAL   = 'V%C3%ADdeos%20_%20NF%20Raro/V%C3%ADdeos%20Campanha/Vertical/Raro%20Brava%20-%20NF%20-%20Campanha%20-%20vertical.mp4';
+  const SRC_HORIZONTAL = video.getAttribute('data-src');
+  const SRC_VERTICAL = video.getAttribute('data-src-vertical') || '';
 
   // ── Estado ────────────────────────────────────────────────────────
   let hideControlsTimer = null;
-  let verticalActive    = false;  // true enquanto vídeo vertical está carregado
-  let pendingFsPlay     = false;  // aguardando canplay para iniciar fullscreen
+  let verticalActive = false;  // true enquanto vídeo vertical está carregado
+  let pendingFsPlay = false;  // aguardando canplay para iniciar fullscreen
 
   const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
 
@@ -59,14 +61,14 @@ export function initVidPlayer() {
   function setPlayState(playing) {
     player.classList.toggle('is-playing', playing);
     player.classList.toggle('is-paused', !playing);
-    iconPlay.hidden  = playing;
-    iconPause.hidden = !playing;
+    if (iconPlay) iconPlay.hidden = playing;
+    if (iconPause) iconPause.hidden = !playing;
     playBtn.setAttribute('aria-label', playing ? 'Pausar' : 'Reproduzir');
   }
 
   function setMuteState(muted) {
-    iconVol.hidden   = muted;
-    iconMuted.hidden = !muted;
+    if (iconVol) iconVol.hidden = muted;
+    if (iconMuted) iconMuted.hidden = !muted;
     muteBtn.setAttribute('aria-label', muted ? 'Ativar som' : 'Silenciar');
   }
 
@@ -74,7 +76,7 @@ export function initVidPlayer() {
     if (!video.duration) return;
     const pct = (video.currentTime / video.duration) * 100;
     progFill.style.width = pct + '%';
-    progThumb.style.left  = pct + '%';
+    progThumb.style.left = pct + '%';
     progBar.setAttribute('aria-valuenow', Math.round(pct));
     currentEl.textContent = fmt(video.currentTime);
   }
@@ -88,21 +90,60 @@ export function initVidPlayer() {
   }
 
   // ── Troca de source ───────────────────────────────────────────────
-  function switchSrc(src, onReady) {
-    video.pause();
-    video.src = src;
-    video.load();
-    video.addEventListener('canplay', onReady, { once: true });
+  let hlsInstance = null;
+
+  function loadVideoSource(src, onReady, wasPlaying) {
+    if (hlsInstance) {
+      hlsInstance.destroy();
+      hlsInstance = null;
+    }
+
+    if (src && src.endsWith('.m3u8')) {
+      if (Hls.isSupported()) {
+        hlsInstance = new Hls();
+        hlsInstance.loadSource(src);
+        hlsInstance.attachMedia(video);
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (onReady) onReady();
+          if (wasPlaying) video.play();
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = src;
+        video.load();
+        video.addEventListener('loadeddata', () => {
+          if (onReady) onReady();
+          if (wasPlaying) video.play();
+        }, { once: true });
+      }
+    } else {
+      video.src = src;
+      video.load();
+      video.addEventListener('canplay', () => {
+        if (onReady) onReady();
+        if (wasPlaying) video.play();
+      }, { once: true });
+    }
   }
 
-  function restoreHorizontal() {
-    verticalActive = false;
-    setPlayState(false);
-    switchSrc(SRC_HORIZONTAL, () => {
-      video.currentTime = 0;
-      durationEl.textContent = fmt(video.duration || 0);
-    });
+  function switchSrc(src, onReady) {
+    const wasPlaying = !video.paused;
+    const currentTime = video.currentTime;
+
+    video.pause();
+
+    // Atualiza classe de aspecto para o CSS se for relevante
+    const isNowVertical = src === SRC_VERTICAL;
+    player.classList.toggle('is-vertical', isNowVertical);
+
+    loadVideoSource(src, () => {
+      if (currentTime > 0) video.currentTime = currentTime;
+      if (onReady) onReady();
+    }, wasPlaying);
   }
+
+  // Inicialização: Always start with Horizontal (default in HTML)
+  verticalActive = false;
+  loadVideoSource(SRC_HORIZONTAL, null, false);
 
   // ── Inicialização de metadados ────────────────────────────────────
   video.addEventListener('loadedmetadata', () => {
@@ -125,7 +166,7 @@ export function initVidPlayer() {
   });
 
   // ── Play / Pause ──────────────────────────────────────────────────
-  video.addEventListener('play',  () => setPlayState(true));
+  video.addEventListener('play', () => setPlayState(true));
   video.addEventListener('pause', () => setPlayState(false));
 
   playBtn.addEventListener('click', (e) => {
@@ -138,25 +179,25 @@ export function initVidPlayer() {
 
   function seekFromEvent(e) {
     const rect = progBar.querySelector('.film-controls__progress-track').getBoundingClientRect();
-    const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     video.currentTime = pct * video.duration;
   }
 
   let seeking = false;
   progBar.addEventListener('mousedown', (e) => { seeking = true; seekFromEvent(e); });
   document.addEventListener('mousemove', (e) => { if (seeking) seekFromEvent(e); });
-  document.addEventListener('mouseup',   ()  => { seeking = false; });
+  document.addEventListener('mouseup', () => { seeking = false; });
 
   progBar.addEventListener('keydown', (e) => {
     const step = video.duration * 0.05;
     if (e.key === 'ArrowRight') video.currentTime = Math.min(video.duration, video.currentTime + step);
-    if (e.key === 'ArrowLeft')  video.currentTime = Math.max(0, video.currentTime - step);
+    if (e.key === 'ArrowLeft') video.currentTime = Math.max(0, video.currentTime - step);
   });
 
   // ── Volume ────────────────────────────────────────────────────────
   function setVolume(v) {
     video.volume = v;
-    video.muted  = v === 0;
+    video.muted = v === 0;
     volFill.style.width = (v * 100) + '%';
     volSlider.setAttribute('aria-valuenow', Math.round(v * 100));
     setMuteState(video.muted);
@@ -165,22 +206,21 @@ export function initVidPlayer() {
   muteBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (video.muted) { video.muted = false; setMuteState(false); }
-    else             { video.muted = true;  setMuteState(true);  }
+    else { video.muted = true; setMuteState(true); }
   });
 
   let draggingVol = false;
   function volFromEvent(e) {
     const rect = volSlider.querySelector('.film-ctrl-vol-track').getBoundingClientRect();
-    const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     setVolume(pct);
   }
   volSlider.addEventListener('mousedown', (e) => { draggingVol = true; volFromEvent(e); });
   document.addEventListener('mousemove', (e) => { if (draggingVol) volFromEvent(e); });
-  document.addEventListener('mouseup',   ()  => { draggingVol = false; });
+  document.addEventListener('mouseup', () => { draggingVol = false; });
 
   // ── Fullscreen ────────────────────────────────────────────────────
   function enterFullscreen() {
-    // iOS Safari usa webkitEnterFullscreen no elemento <video>
     if (video.webkitEnterFullscreen && !document.fullscreenEnabled) {
       video.webkitEnterFullscreen();
     } else {
@@ -191,47 +231,47 @@ export function initVidPlayer() {
 
   fsBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-
     const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
 
     if (!isFs) {
+      // ENTRANDO EM FULLSCREEN
       if (isMobile() && !verticalActive) {
-        // Mobile + ainda no horizontal → troca para vertical antes do fullscreen
+        // No mobile, estamos horizontal inline -> troca para VERTICAL antes de abrir full
         verticalActive = true;
-        pendingFsPlay  = true;
         switchSrc(SRC_VERTICAL, () => {
-          pendingFsPlay = false;
-          video.play().then(() => enterFullscreen()).catch(() => enterFullscreen());
+          enterFullscreen();
+          video.play();
         });
       } else {
-        // Desktop ou já está no vertical
-        if (!video.paused) {
-          enterFullscreen();
-        } else {
-          video.play().then(() => enterFullscreen()).catch(() => enterFullscreen());
-        }
+        enterFullscreen();
+        video.play();
       }
     } else {
-      (document.exitFullscreen
-        || document.webkitExitFullscreen
-        || document.mozCancelFullScreen
-      ).call(document);
+      // SAINDO DO FULLSCREEN
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     }
   });
 
-  // Ao sair do fullscreen em mobile com vídeo vertical → volta ao horizontal
+  // Listener para mudança de fullscreen (ESC ou botão)
   function onFsChange() {
     const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    if (!isFs && verticalActive && isMobile()) {
-      restoreHorizontal();
+    if (!isFs && isMobile() && verticalActive) {
+      // Saiu do fullscreen no mobile -> volta para HORIZONTAL (Desktop video) inline
+      verticalActive = false;
+      switchSrc(SRC_HORIZONTAL);
     }
   }
-  document.addEventListener('fullscreenchange',       onFsChange);
+
+  document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
 
   // iOS Safari: saiu do fullscreen nativo do vídeo
   video.addEventListener('webkitendfullscreen', () => {
-    if (verticalActive) restoreHorizontal();
+    if (isMobile() && verticalActive) {
+      verticalActive = false;
+      switchSrc(SRC_HORIZONTAL);
+    }
   });
 
   // ── Auto-hide controls ────────────────────────────────────────────

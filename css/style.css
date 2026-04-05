@@ -3567,6 +3567,14 @@ main>section:nth-of-type(10) {
   cursor: pointer;
 }
 
+/* Estado vertical (mobile inline) */
+.film-player.is-vertical {
+  aspect-ratio: 9/16;
+  max-width: 480px; /* Evita que fique gigante em tablets portrait */
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* Garante que ao entrar em fullscreen fique 100% */
 .film-player:fullscreen,
 .film-player:-webkit-full-screen {

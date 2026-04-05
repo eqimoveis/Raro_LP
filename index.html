@@ -66,7 +66,8 @@
       "gsap": "https://esm.sh/gsap@3.12.5",
       "gsap/ScrollTrigger": "https://esm.sh/gsap@3.12.5/ScrollTrigger",
       "lenis": "https://esm.sh/@studio-freight/lenis@1.0.42",
-      "split-type": "https://esm.sh/split-type@0.3.4"
+      "split-type": "https://esm.sh/split-type@0.3.4",
+      "hls.js": "https://esm.sh/hls.js@1.5.7"
     }
   }
   </script>
@@ -76,6 +77,12 @@
   <link rel="dns-prefetch" href="https://www.google.com" />
   <link rel="dns-prefetch" href="https://maps.googleapis.com" />
   <link rel="dns-prefetch" href="https://wa.me" />
+
+  <!-- Preload do primeiro frame da animação hero — inicia download antes do JS rodar -->
+  <link rel="preload" as="image" href="assets/frames-webp/frame-0241.webp" type="image/webp" media="(min-width: 768px)"
+    fetchpriority="high" />
+  <link rel="preload" as="image" href="assets/frames-mobile-webp/frame-0241.webp" type="image/webp"
+    media="(max-width: 767px)" fetchpriority="high" />
 
   <!-- JSON-LD: Organization -->
   <script type="application/ld+json">
@@ -267,7 +274,8 @@
         Balneário Camboriú.</p>
       <h2>Unidades</h2>
       <p>Lofts e studios de <strong>33 a 102 m²</strong> com opções de pé-direito simples e pé-direito duplo (5,5m). São
-        <strong>245 unidades</strong> no total, com planta de conceito aberto, sacada privativa e fechadura digital.</p>
+        <strong>245 unidades</strong> no total, com planta de conceito aberto, sacada privativa e fechadura digital.
+      </p>
       <h2>Diferenciais Exclusivos</h2>
       <ul>
         <li>Heliponto homologado — o único da região</li>
@@ -638,7 +646,8 @@
                 <span class="lz-amenity-btn__name">Salão de Festas</span>
               </button>
               <button class="lz-amenity-btn" type="button" data-zone="resort" data-amenity="gourmet-piscina"
-                data-label="Gourmet c/ Piscina Privativa" data-video="assets/amenidades-marlon/marlon_gourmet_piscina_privatica_web.mp4">
+                data-label="Gourmet c/ Piscina Privativa"
+                data-video="assets/amenidades-marlon/marlon_gourmet_piscina_privatica_web.mp4">
                 <span class="lz-amenity-btn__name">Gourmet c/ Piscina</span>
               </button>
               <button class="lz-amenity-btn" type="button" data-zone="resort" data-amenity="gourmet-externo"
@@ -699,7 +708,8 @@
                 <span class="lz-amenity-btn__name">Terraço</span>
               </button>
               <button class="lz-amenity-btn" type="button" data-zone="rooftop" data-amenity="restaurante"
-                data-label="Restaurante Panorâmico" data-video="assets/amenidades-marlon/marlon_restaurante_rooftop_web.mp4">
+                data-label="Restaurante Panorâmico"
+                data-video="assets/amenidades-marlon/marlon_restaurante_rooftop_web.mp4">
                 <span class="lz-amenity-btn__name">Restaurante Panorâmico</span>
               </button>
             </div>
@@ -1258,9 +1268,9 @@
     <!-- SEÇÃO 9 — FILME INSTITUCIONAL -->
     <section class="section section--dark section--film" id="filme" data-section="filme">
       <div class="film-player" id="film-player" data-film-player>
-        <video class="film-player__video" id="film-video"
-          src="V%C3%ADdeos%20_%20NF%20Raro/V%C3%ADdeos%20Campanha/Raro%20Brava%20-%20NF%20-%20Making%20Of.mp4"
-          preload="metadata" playsinline aria-label="Vídeo institucional RARO Praia Brava"></video>
+        <video class="film-player__video" id="film-video" data-src="assets/videos-marlon/hls/making_of.m3u8"
+          data-src-vertical="assets/videos-marlon/hls/vertical.m3u8" preload="none"
+          playsinline aria-label="Vídeo institucional RARO Praia Brava"></video>
         <div class="film-player__end-card" id="film-end-card" aria-hidden="true">
           <img src="Logo%20_%20NF%20Raro/RARO_Sierra_horizontal.png" alt="RARO × Sierra" class="film-end-card__logo"
             draggable="false" />
