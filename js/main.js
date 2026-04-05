@@ -31,12 +31,14 @@ function initLenis() {
 
 async function onReady() {
   const lenis = initLenis();
+
+  // Hero inicia em paralelo com o loader — frame 241 carrega enquanto
+  // o loader ainda está visível, então quando o loader sobe o canvas já está pronto.
+  initHero(gsap, ScrollTrigger);
+
   await initLoader(gsap);
 
   document.body.classList.add("is-loaded");
-
-  // O Hero é vital para o LCP. Inicializa imediatamente.
-  initHero(gsap, ScrollTrigger);
 
   // Carregamento diferido de módulos interativos de baixo do fold
   // Usamos requestIdleCallback para não competir com a renderização inicial

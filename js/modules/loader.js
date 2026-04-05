@@ -2,7 +2,6 @@ export function initLoader(gsap) {
   return new Promise((resolve) => {
     const el     = document.getElementById("page-loader");
     const fill   = el?.querySelector(".page-loader__logo--fill");
-    const bar    = el?.querySelector(".page-loader__line span");
     const hint   = el?.querySelector(".page-loader__hint");
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -24,21 +23,6 @@ export function initLoader(gsap) {
           duration: 1.05,
           ease: "power2.inOut",
           delay: 0.12,
-        }
-      );
-    }
-
-    /* ── Linha de progresso ──────────────────────────── */
-    if (bar) {
-      gsap.fromTo(
-        bar,
-        { scaleX: 0 },
-        {
-          scaleX: 1,
-          duration: 1.1,
-          ease: "power2.inOut",
-          transformOrigin: "left center",
-          delay: 0.1,
         }
       );
     }

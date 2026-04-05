@@ -1,223 +1,209 @@
 /**
- * Hero — scroll-linked frame animation (Apple-style)
+ * Hero — scroll-linked frame animation  ·  DEFINITIVE VERSION
  *
- * Técnica: pré-carrega frames WebP → desenha no canvas via scroll.
- * Direção: REVERSA — scroll 0% = frame 241 (topo), scroll 100% = frame 1.
+ * Técnica Apple-style: pré-carrega frames WebP → pinta no canvas.
+ * Direção: REVERSA — scroll 0% = frame 241 (topo) → scroll 100% = frame 1.
  *
- * Otimizações-chave:
- *  1. createImageBitmap — decodifica frames FORA da main thread (sem jank)
- *  2. Snap to nearest — sem blending entre frames (1 drawImage por tick)
- *  3. Concorrência controlada — máx 4 downloads simultâneos (sem congestão)
- *  4. DPR limitado a 1.5 — canvas menor = draw mais rápido
- *  5. Sem clearRect — cover-fit cobre 100% dos pixels, limpar é redundante
+ * ┌────────────────────── Otimizações ──────────────────────┐
+ * │ 1. rAF-batched paint   — scroll só atualiza progresso;  │
+ * │                         paint roda 1× por frame do      │
+ * │                         monitor, NUNCA no scroll handler │
+ * │ 2. alpha: false         — GPU pula composição de alfa    │
+ * │ 3. DPR = 1.0            — canvas = CSS pixels; imagens  │
+ * │                         fonte são resolução fixa, não    │
+ * │                         ganham nada com upscaling         │
+ * │ 4. new Image + decode() — browser-otimizado, sem fetch/  │
+ * │                         blob overhead; decode off-thread │
+ * │ 5. Sem loading gate     — primeiro frame aparece instant │
+ * │ 6. Snap direto          — 1 drawImage por tick, sem      │
+ * │                         blending entre frames            │
+ * │ 7. Pool c/ 6 workers    — maximiza HTTP/2 multiplexing   │
+ * │ 8. prefers-reduced-motion — respeita preferência a11y    │
+ * └─────────────────────────────────────────────────────────┘
  */
 
 const IS_MOBILE = () => window.matchMedia("(max-width: 767px)").matches;
 const FRAME_COUNT = 241;
 const FRAME_PAD   = 4;
+const POOL_SIZE   = 6;
 
-/* Quantos frames carregar antes de liberar a animação.
- * Mais = mais espera, menos chance de frame vazio durante scroll rápido. */
-const GATE_DESKTOP = 80;
-const GATE_MOBILE  = 60;
-
-/* Máx downloads paralelos — respeita o limite de ~6 conn/domínio */
-const CONCURRENCY  = 4;
-
-/* ═══════════════════════════════════════════════════════════════
-   Helpers de desenho
-   ═══════════════════════════════════════════════════════════════ */
-
-/** Cover-fit: preenche o canvas inteiro, sem clearRect. */
-function coverFit(ctx, src, cw, ch) {
-  const sw = src.width  || src.naturalWidth  || cw;
-  const sh = src.height || src.naturalHeight || ch;
+/* ── Cover-fit: preenche canvas inteiro mantendo aspect ratio ─── */
+function coverFit(ctx, img, cw, ch) {
+  const sw = img.naturalWidth  || img.width;
+  const sh = img.naturalHeight || img.height;
   if (!sw || !sh) return;
-  const sr = sw / sh, cr = cw / ch;
+
+  const sr = sw / sh;
+  const cr = cw / ch;
   let dw, dh, dx, dy;
+
   if (sr > cr) { dh = ch; dw = ch * sr; dx = (cw - dw) / 2; dy = 0; }
   else         { dw = cw; dh = cw / sr;  dx = 0; dy = (ch - dh) / 2; }
-  ctx.drawImage(src, dx, dy, dw, dh);
+
+  ctx.drawImage(img, dx, dy, dw, dh);
 }
 
-/** Barra de progresso minimalista durante carregamento. */
-function drawLoadingBar(ctx, w, h, pct) {
-  ctx.fillStyle = "#050709";
-  ctx.fillRect(0, 0, w, h);
-  const bw = Math.round(w * 0.3), bh = 1;
-  const bx = Math.round((w - bw) / 2), by = Math.round(h / 2);
-  ctx.fillStyle = "rgba(200,150,90,0.10)";
-  ctx.fillRect(bx, by, bw, bh);
-  ctx.fillStyle = "rgba(200,150,90,0.65)";
-  ctx.fillRect(bx, by, Math.round(bw * Math.min(pct, 1)), bh);
-}
-
-/** Redimensiona canvas com DPR limitado (1.5 max para performance). */
-function resizeCanvas(canvas, ctx) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  canvas.width  = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return { w, h };
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Carregamento de imagens — off-thread via createImageBitmap
-   ═══════════════════════════════════════════════════════════════ */
-
-/**
- * Carrega uma imagem e retorna um ImageBitmap (decodificado off-thread).
- * Fallback para Image() em browsers sem createImageBitmap.
- */
-function loadFrame(src) {
-  if (typeof createImageBitmap === "function") {
-    return fetch(src)
-      .then(r => { if (!r.ok) throw 0; return r.blob(); })
-      .then(blob => createImageBitmap(blob))
-      .catch(() => null);
-  }
-  /* fallback — decodifica na main thread */
+/* ── Carrega imagem com decode off-thread ───────────────────── */
+function loadImg(src, shouldDecode) {
   return new Promise(resolve => {
     const img = new Image();
-    img.onload  = () => resolve(img);
+    img.decoding = "async";
+    img.onload = () => {
+      if (shouldDecode && img.decode) {
+        img.decode().then(() => resolve(img)).catch(() => resolve(img));
+      } else {
+        resolve(img);
+      }
+    };
     img.onerror = () => resolve(null);
     img.src = src;
   });
 }
 
-/**
- * Pool de download com concorrência limitada.
- * Evita explodir as conexões do browser (máx ~6 por domínio).
- *
- * @param {Array<{idx:number, src:string}>} jobs
- * @param {Function} onFrame  (idx, bitmap) → void
- * @param {number} limit
- */
-async function downloadPool(jobs, onFrame, limit = CONCURRENCY) {
-  let i = 0;
+/* ── Download pool com concorrência controlada ──────────────── */
+async function pool(jobs, onFrame, limit) {
+  let cursor = 0;
   async function worker() {
-    while (i < jobs.length) {
-      const job = jobs[i++];
-      const bmp = await loadFrame(job.src);
-      if (bmp) onFrame(job.idx, bmp);
+    while (cursor < jobs.length) {
+      const j = jobs[cursor++];
+      const img = await loadImg(j.src, false);
+      if (img) onFrame(j.idx, img);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(limit, jobs.length) }, worker));
+  const workers = [];
+  for (let w = 0; w < Math.min(limit, jobs.length); w++) workers.push(worker());
+  await Promise.all(workers);
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Motor principal — usado por desktop e mobile
+   Motor principal
    ═══════════════════════════════════════════════════════════════ */
 
-function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir, gate) {
+function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
   const frames = new Array(FRAME_COUNT).fill(null);
-  let dims     = { w: 0, h: 0 };
-  let progress = 0;
-  let ready    = false;
-  let loadPct  = 0;
-  let lastIdx  = -1;
+  let cw = 0;
+  let ch = 0;
+  let progress  = 0;         // 0 → 1 do ScrollTrigger
+  let lastIdx   = -1;        // último frame desenhado
+  let raf       = false;     // flag de rAF pendente
+  let ready     = false;     // ao menos 1 frame disponível
 
-  const src = (i) => `${frameDir}/frame-${String(i).padStart(FRAME_PAD, "0")}.webp`;
+  const src = (n) => `${frameDir}/frame-${String(n).padStart(FRAME_PAD, "0")}.webp`;
 
-  /* ── Paint ────────────────────────────────────────────────── */
-  function paint() {
-    const { w, h } = dims;
-    if (!w || !h) return;
-
-    if (!ready) {
-      drawLoadingBar(ctx, w, h, loadPct);
-      return;
+  /* ── Resize: DPR = 1.0 ─────────────────────────────────── */
+  function syncSize() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (w !== cw || h !== ch) {
+      cw = w;
+      ch = h;
+      canvas.width  = w;   // pixel buffer = CSS size (DPR 1.0)
+      canvas.height = h;
+      lastIdx = -1;         // força repaint após resize
+      schedulePaint();
     }
-
-    // REVERSE: scroll 0 → frame 241, scroll 1 → frame 1
-    const p   = 1 - Math.max(0, Math.min(1, progress));
-    const idx = Math.round(p * (FRAME_COUNT - 1));
-
-    if (idx === lastIdx) return;          // mesmo frame, pula
-    lastIdx = idx;
-
-    // Busca frame exato ou o mais próximo carregado
-    const frame = frames[idx] || nearest(idx);
-    if (frame) coverFit(ctx, frame, w, h);
   }
 
-  /** Encontra o frame carregado mais próximo de idx. */
-  function nearest(idx) {
+  /* ── Paint: NUNCA chamado diretamente do scroll ─────────── */
+  function paint() {
+    raf = false;                               // libera flag
+    if (!cw || !ch || !ready) return;
+
+    // REVERSE: scroll 0% → frame 241 | scroll 100% → frame 1
+    const t   = 1 - Math.max(0, Math.min(1, progress));
+    const idx = Math.round(t * (FRAME_COUNT - 1));
+
+    if (idx === lastIdx) return;               // mesmo frame → skip
+    lastIdx = idx;
+
+    const frame = frames[idx] || findNearest(idx);
+    if (frame) coverFit(ctx, frame, cw, ch);
+  }
+
+  /* ── Scheduler: agrupa todos os scrolls em 1 paint/rAF ──── */
+  function schedulePaint() {
+    if (!raf) {
+      raf = true;
+      requestAnimationFrame(paint);
+    }
+  }
+
+  /* ── Busca frame carregado mais próximo ─────────────────── */
+  function findNearest(target) {
     for (let d = 1; d < FRAME_COUNT; d++) {
-      if (idx + d < FRAME_COUNT && frames[idx + d]) return frames[idx + d];
-      if (idx - d >= 0          && frames[idx - d]) return frames[idx - d];
+      if (target + d < FRAME_COUNT && frames[target + d]) return frames[target + d];
+      if (target - d >= 0          && frames[target - d]) return frames[target - d];
     }
     return null;
   }
 
-  /* ── Canvas resize ────────────────────────────────────────── */
-  const syncSize = () => { dims = resizeCanvas(canvas, ctx); lastIdx = -1; paint(); };
+  /* ── Setup ──────────────────────────────────────────────── */
   syncSize();
   window.addEventListener("resize", syncSize, { passive: true });
 
-  /* ── ScrollTrigger ────────────────────────────────────────── */
+  // ScrollTrigger: SÓ atualiza variável, nunca pinta
   ScrollTrigger.create({
     trigger: ".hero",
-    start: "top top",
-    end: "bottom bottom",
-    scrub: true,
-    onUpdate(self) { progress = self.progress; paint(); },
+    start:   "top top",
+    end:     "bottom bottom",
+    scrub:   true,
+    onUpdate(self) {
+      progress = self.progress;
+      schedulePaint();
+    },
   });
 
-  /* ── Hint fade ────────────────────────────────────────────── */
+  // Fade do scroll hint
   const hint = document.getElementById("hero-scroll-hint");
   if (hint) {
     gsap.to(hint, {
-      opacity: 0, pointerEvents: "none",
-      scrollTrigger: { trigger: ".hero", start: "top top", end: "20% top", scrub: true },
+      opacity: 0,
+      pointerEvents: "none",
+      scrollTrigger: {
+        trigger: ".hero",
+        start: "top top",
+        end: "20% top",
+        scrub: true,
+      },
     });
   }
 
-  /* ── Carregamento progressivo ─────────────────────────────── */
-  (async function load() {
-    /*
-     * Ordem: como a animação é reversa (topo = frame 241),
-     * carregamos do frame 241 para trás.
-     */
-    const order = [];
-    for (let i = FRAME_COUNT; i >= 1; i--) order.push(i);
+  /* ═══════════════════════════════════════════════════════════
+     LOADING STRATEGY
+     ─────────────────────────────────────────────────────────
+     Fase 1: Frame 241 (primeiro visível) → exibe INSTANTANEAMENTE
+             Sem loading bar, sem gate, sem espera.
+     Fase 2: Frames 240 → 1 (ordem de prioridade reversa)
+             Pool com 6 workers, carrega em background.
+             Quando um frame perto da posição atual carrega,
+             faz repaint automático.
+     ═══════════════════════════════════════════════════════════ */
+  (async () => {
+    // FASE 1: primeiro frame com decode forçado (garante 0 jank no primeiro paint)
+    const first = await loadImg(src(FRAME_COUNT), true);
+    if (first) {
+      frames[FRAME_COUNT - 1] = first;
+      ready = true;
+      lastIdx = -1;
+      schedulePaint();
+    }
 
-    /* ── Fase 1: priority batch (gate frames) ──────────────── */
-    const priority = order.slice(0, gate);
-    let done = 0;
+    // FASE 2: restante 240 → 1
+    const jobs = [];
+    for (let i = FRAME_COUNT - 1; i >= 1; i--) {
+      jobs.push({ idx: i - 1, src: src(i) });
+    }
 
-    await downloadPool(
-      priority.map(i => ({ idx: i - 1, src: src(i) })),
-      (idx, bmp) => {
-        frames[idx] = bmp;
-        done++;
-        loadPct = done / gate;
-        paint();                           // atualiza barra
-      },
-      CONCURRENCY
-    );
-
-    // Libera animação
-    ready   = true;
-    lastIdx = -1;
-    paint();
-
-    /* ── Fase 2: restante em background ────────────────────── */
-    const rest = order.slice(gate);
-    if (!rest.length) return;
-
-    await downloadPool(
-      rest.map(i => ({ idx: i - 1, src: src(i) })),
-      (idx, bmp) => {
-        frames[idx] = bmp;
-        // repinta se o usuário está perto desse frame
-        const p   = 1 - Math.max(0, Math.min(1, progress));
-        const cur = Math.round(p * (FRAME_COUNT - 1));
-        if (Math.abs(cur - idx) < 3) { lastIdx = -1; paint(); }
-      },
-      CONCURRENCY
-    );
+    await pool(jobs, (idx, img) => {
+      frames[idx] = img;
+      // Se o frame recém-carregado está perto da posição atual, repinta
+      const t   = 1 - Math.max(0, Math.min(1, progress));
+      const cur = Math.round(t * (FRAME_COUNT - 1));
+      if (Math.abs(idx - cur) <= 3) {
+        lastIdx = -1;
+        schedulePaint();
+      }
+    }, POOL_SIZE);
   })();
 }
 
@@ -227,11 +213,24 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir, gate) {
 export function initHero(gsap, ScrollTrigger) {
   const canvas = document.getElementById("hero-canvas");
   if (!canvas) return;
-  const ctx = canvas.getContext("2d");
+
+  // prefers-reduced-motion: exibe frame estático, sem animação de scroll
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const dir = IS_MOBILE() ? "assets/frames-mobile-webp" : "assets/frames-webp";
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    canvas.width = w;
+    canvas.height = h;
+    loadImg(`${dir}/frame-${String(FRAME_COUNT).padStart(FRAME_PAD, "0")}.webp`, true)
+      .then(img => { if (img) coverFit(ctx, img, w, h); });
+    return {};
+  }
+
+  // alpha: false = MAJOR GPU optimization (browser pula composição de transparência)
+  const ctx = canvas.getContext("2d", { alpha: false });
 
   const dir  = IS_MOBILE() ? "assets/frames-mobile-webp" : "assets/frames-webp";
-  const gate = IS_MOBILE() ? GATE_MOBILE : GATE_DESKTOP;
-
-  initFrameScrub(canvas, ctx, gsap, ScrollTrigger, dir, gate);
+  initFrameScrub(canvas, ctx, gsap, ScrollTrigger, dir);
   return {};
 }
