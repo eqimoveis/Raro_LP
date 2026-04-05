@@ -1,24 +1,21 @@
 /**
- * Hero — scroll-linked frame animation  ·  DEFINITIVE VERSION
+ * Hero — scroll-linked frame animation  ·  v3
  *
  * Técnica Apple-style: pré-carrega frames WebP → pinta no canvas.
  * Direção: REVERSA — scroll 0% = frame 241 (topo) → scroll 100% = frame 1.
  *
  * ┌────────────────────── Otimizações ──────────────────────┐
- * │ 1. rAF-batched paint   — scroll só atualiza progresso;  │
- * │                         paint roda 1× por frame do      │
- * │                         monitor, NUNCA no scroll handler │
- * │ 2. alpha: false         — GPU pula composição de alfa    │
- * │ 3. DPR = 1.0            — canvas = CSS pixels; imagens  │
- * │                         fonte são resolução fixa, não    │
- * │                         ganham nada com upscaling         │
- * │ 4. new Image + decode() — browser-otimizado, sem fetch/  │
- * │                         blob overhead; decode off-thread │
- * │ 5. Sem loading gate     — primeiro frame aparece instant │
- * │ 6. Snap direto          — 1 drawImage por tick, sem      │
- * │                         blending entre frames            │
- * │ 7. Pool c/ 6 workers    — maximiza HTTP/2 multiplexing   │
- * │ 8. prefers-reduced-motion — respeita preferência a11y    │
+ * │ 1. img.decode() em TODOS os frames — move decodificação  │
+ * │    para fora do critical path, evita jank no main thread │
+ * │ 2. scrub: 0.5 — interpolação suave em 120Hz sem latência │
+ * │    perceptível (Lenis já suaviza o scroll upstream)      │
+ * │ 3. refreshOnLoaderExit — hook para main.js acionar       │
+ * │    ScrollTrigger.refresh() pós-loader com layout correto │
+ * │ 4. alpha: false — GPU pula composição de alfa            │
+ * │ 5. DPR = 1.0 — canvas = CSS pixels                      │
+ * │ 6. Pool c/ 6 workers — maximiza HTTP/2 multiplexing      │
+ * │ 7. Mobile: assets/frames-mobile-webp/ (detectado por     │
+ * │    matchMedia ≤767px no momento da inicialização)        │
  * └─────────────────────────────────────────────────────────┘
  */
 
@@ -43,13 +40,16 @@ function coverFit(ctx, img, cw, ch) {
   ctx.drawImage(img, dx, dy, dw, dh);
 }
 
-/* ── Carrega imagem com decode off-thread ───────────────────── */
-function loadImg(src, shouldDecode) {
+/* ── Carrega imagem com decode sempre off-thread ────────────── */
+function loadImg(src) {
   return new Promise(resolve => {
     const img = new Image();
     img.decoding = "async";
     img.onload = () => {
-      if (shouldDecode && img.decode) {
+      // img.decode() chamado em TODOS os frames (não apenas o primeiro).
+      // Move a decodificação para fora do rendering pipeline — o browser
+      // faz isso em paralelo com outros trabalhos, evitando stutter.
+      if (img.decode) {
         img.decode().then(() => resolve(img)).catch(() => resolve(img));
       } else {
         resolve(img);
@@ -66,7 +66,7 @@ async function pool(jobs, onFrame, limit) {
   async function worker() {
     while (cursor < jobs.length) {
       const j = jobs[cursor++];
-      const img = await loadImg(j.src, false);
+      const img = await loadImg(j.src);
       if (img) onFrame(j.idx, img);
     }
   }
@@ -83,10 +83,10 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
   const frames = new Array(FRAME_COUNT).fill(null);
   let cw = 0;
   let ch = 0;
-  let progress  = 0;         // 0 → 1 do ScrollTrigger
-  let lastIdx   = -1;        // último frame desenhado
-  let raf       = false;     // flag de rAF pendente
-  let ready     = false;     // ao menos 1 frame disponível
+  let progress  = 0;    // 0 → 1 do ScrollTrigger
+  let lastIdx   = -1;   // último frame desenhado
+  let raf       = false;
+  let ready     = false;
 
   const src = (n) => `${frameDir}/frame-${String(n).padStart(FRAME_PAD, "0")}.webp`;
 
@@ -95,37 +95,32 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     if (w !== cw || h !== ch) {
-      cw = w;
-      ch = h;
-      canvas.width  = w;   // pixel buffer = CSS size (DPR 1.0)
+      cw = w; ch = h;
+      canvas.width  = w;
       canvas.height = h;
-      lastIdx = -1;         // força repaint após resize
+      lastIdx = -1;
       schedulePaint();
     }
   }
 
   /* ── Paint: NUNCA chamado diretamente do scroll ─────────── */
   function paint() {
-    raf = false;                               // libera flag
+    raf = false;
     if (!cw || !ch || !ready) return;
 
     // REVERSE: scroll 0% → frame 241 | scroll 100% → frame 1
     const t   = 1 - Math.max(0, Math.min(1, progress));
     const idx = Math.round(t * (FRAME_COUNT - 1));
 
-    if (idx === lastIdx) return;               // mesmo frame → skip
+    if (idx === lastIdx) return;
     lastIdx = idx;
 
     const frame = frames[idx] || findNearest(idx);
     if (frame) coverFit(ctx, frame, cw, ch);
   }
 
-  /* ── Scheduler: agrupa todos os scrolls em 1 paint/rAF ──── */
   function schedulePaint() {
-    if (!raf) {
-      raf = true;
-      requestAnimationFrame(paint);
-    }
+    if (!raf) { raf = true; requestAnimationFrame(paint); }
   }
 
   /* ── Busca frame carregado mais próximo ─────────────────── */
@@ -141,12 +136,14 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
   syncSize();
   window.addEventListener("resize", syncSize, { passive: true });
 
-  // ScrollTrigger: SÓ atualiza variável, nunca pinta
+  // scrub: 0.5 — interpolação de 500ms entre o scroll do Lenis e o progresso
+  // reportado pelo trigger. Com Lenis já suavizando o scroll upstream, isso
+  // elimina micro-jank visível em monitores 120Hz sem latência perceptível.
   ScrollTrigger.create({
     trigger: ".hero",
     start:   "top top",
     end:     "bottom bottom",
-    scrub:   true,
+    scrub:   0.5,
     onUpdate(self) {
       progress = self.progress;
       schedulePaint();
@@ -169,18 +166,18 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
   }
 
   /* ═══════════════════════════════════════════════════════════
-     LOADING STRATEGY
+     LOADING STRATEGY v3
      ─────────────────────────────────────────────────────────
-     Fase 1: Frame 241 (primeiro visível) → exibe INSTANTANEAMENTE
-             Sem loading bar, sem gate, sem espera.
-     Fase 2: Frames 240 → 1 (ordem de prioridade reversa)
-             Pool com 6 workers, carrega em background.
-             Quando um frame perto da posição atual carrega,
-             faz repaint automático.
+     Fase 1: Frame 241 (primeiro visível) → exibe INSTANTANEAMENTE.
+             decode() forçado garante 0 jank no primeiro paint.
+     Fase 2: Frames 240 → 1 em ordem reversa (alta prioridade para
+             frames próximos do topo, onde o usuário começa).
+             Pool de 6 workers + decode() em cada frame.
+             Repaint automático quando frame próximo à posição atual carrega.
      ═══════════════════════════════════════════════════════════ */
   (async () => {
-    // FASE 1: primeiro frame com decode forçado (garante 0 jank no primeiro paint)
-    const first = await loadImg(src(FRAME_COUNT), true);
+    // FASE 1: frame inicial — exibe assim que possível
+    const first = await loadImg(src(FRAME_COUNT));
     if (first) {
       frames[FRAME_COUNT - 1] = first;
       ready = true;
@@ -188,7 +185,7 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
       schedulePaint();
     }
 
-    // FASE 2: restante 240 → 1
+    // FASE 2: 240 → 1 (prioridade para frames do início da animação)
     const jobs = [];
     for (let i = FRAME_COUNT - 1; i >= 1; i--) {
       jobs.push({ idx: i - 1, src: src(i) });
@@ -196,7 +193,7 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
 
     await pool(jobs, (idx, img) => {
       frames[idx] = img;
-      // Se o frame recém-carregado está perto da posição atual, repinta
+      // Repinta se o frame recém-carregado está próximo da posição atual
       const t   = 1 - Math.max(0, Math.min(1, progress));
       const cur = Math.round(t * (FRAME_COUNT - 1));
       if (Math.abs(idx - cur) <= 3) {
@@ -205,6 +202,16 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
       }
     }, POOL_SIZE);
   })();
+
+  /* ── Hook para refresh pós-loader ───────────────────────── */
+  // Chamado pelo main.js depois de ScrollTrigger.refresh() pós-loader.
+  // Força repaint para usar as posições corretas do trigger recalculado.
+  function onRefresh() {
+    lastIdx = -1;
+    schedulePaint();
+  }
+
+  return { onRefresh };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -212,25 +219,31 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
    ═══════════════════════════════════════════════════════════════ */
 export function initHero(gsap, ScrollTrigger) {
   const canvas = document.getElementById("hero-canvas");
-  if (!canvas) return;
+  if (!canvas) return {};
 
   // prefers-reduced-motion: exibe frame estático, sem animação de scroll
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const ctx = canvas.getContext("2d", { alpha: false });
+    // Mobile: frames-mobile-webp/ | Desktop: frames-webp/
     const dir = IS_MOBILE() ? "assets/frames-mobile-webp" : "assets/frames-webp";
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     canvas.width = w;
     canvas.height = h;
-    loadImg(`${dir}/frame-${String(FRAME_COUNT).padStart(FRAME_PAD, "0")}.webp`, true)
+    loadImg(`${dir}/frame-${String(FRAME_COUNT).padStart(FRAME_PAD, "0")}.webp`)
       .then(img => { if (img) coverFit(ctx, img, w, h); });
     return {};
   }
 
-  // alpha: false = MAJOR GPU optimization (browser pula composição de transparência)
   const ctx = canvas.getContext("2d", { alpha: false });
 
-  const dir  = IS_MOBILE() ? "assets/frames-mobile-webp" : "assets/frames-webp";
-  initFrameScrub(canvas, ctx, gsap, ScrollTrigger, dir);
-  return {};
+  // Mobile (≤767px): assets/frames-mobile-webp/
+  // Desktop (≥768px): assets/frames-webp/
+  const dir = IS_MOBILE() ? "assets/frames-mobile-webp" : "assets/frames-webp";
+
+  const { onRefresh } = initFrameScrub(canvas, ctx, gsap, ScrollTrigger, dir);
+
+  // refreshOnLoaderExit: chamado pelo main.js após ScrollTrigger.refresh()
+  // pós-loader para garantir que o primeiro paint usa posições corretas.
+  return { refreshOnLoaderExit: onRefresh };
 }

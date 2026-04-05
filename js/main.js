@@ -11,7 +11,7 @@ gsap.registerPlugin(ScrollTrigger);
 
 function initLenis() {
   const lenis = new Lenis({
-    duration: 1.15,
+    duration: 1.0,          // reduzido de 1.15 — mais responsivo para scroll-linked animation
     easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
     orientation: "vertical",
     smoothWheel: true,
@@ -30,18 +30,25 @@ function initLenis() {
 }
 
 async function onReady() {
-  const lenis = initLenis();
+  initLenis();
 
-  // Hero inicia em paralelo com o loader — frame 241 carrega enquanto
-  // o loader ainda está visível, então quando o loader sobe o canvas já está pronto.
-  initHero(gsap, ScrollTrigger);
+  // Hero inicia em paralelo com o loader — frame 241 carrega enquanto o loader
+  // ainda está visível, então quando o loader sobe o canvas já está pronto.
+  // refreshOnLoaderExit é chamado depois do ScrollTrigger.refresh() pós-loader.
+  const { refreshOnLoaderExit } = initHero(gsap, ScrollTrigger);
 
   await initLoader(gsap);
 
+  // Loader saiu: overflow:hidden removido, layout correto agora.
+  // Dois rAFs garantem que o browser processou o reflow antes do refresh.
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  ScrollTrigger.refresh();
+  refreshOnLoaderExit?.();
+
   document.body.classList.add("is-loaded");
 
-  // Carregamento diferido de módulos interativos de baixo do fold
-  // Usamos requestIdleCallback para não competir com a renderização inicial
+  // Carregamento diferido de módulos interativos de baixo do fold.
+  // requestIdleCallback garante que não compete com a renderização inicial.
   const loadDeferred = async () => {
     try {
       const [
@@ -75,6 +82,7 @@ async function onReady() {
       initPlantaZoom();
       initSectionAnimations(gsap);
 
+      // Segundo refresh: consolida triggers dos módulos diferidos com layout final.
       ScrollTrigger.refresh();
     } catch (err) {
       console.error("Erro ao carregar módulos diferidos:", err);
