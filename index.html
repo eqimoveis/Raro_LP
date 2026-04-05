@@ -77,6 +77,12 @@
   <link rel="dns-prefetch" href="https://maps.googleapis.com" />
   <link rel="dns-prefetch" href="https://wa.me" />
 
+  <!-- Preload do primeiro frame da animação hero — inicia download antes do JS rodar -->
+  <link rel="preload" as="image" href="assets/frames-webp/frame-0241.webp" type="image/webp"
+        media="(min-width: 768px)" fetchpriority="high" />
+  <link rel="preload" as="image" href="assets/frames-mobile-webp/frame-0241.webp" type="image/webp"
+        media="(max-width: 767px)" fetchpriority="high" />
+
   <!-- JSON-LD: Organization -->
   <script type="application/ld+json">
   {
