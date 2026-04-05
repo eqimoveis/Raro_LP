@@ -1069,8 +1069,8 @@ body.is-loading {
   width: 100%;
   height: 100%;
   display: block;
-  /* Otimização de renderização para desktop */
-  image-rendering: -webkit-optimize-contrast;
+  /* GPU compositing: browser renderiza o canvas como layer separado */
+  will-change: contents;
 }
 
 .hero__scroll-hint {
