@@ -1069,8 +1069,8 @@ body.is-loading {
   width: 100%;
   height: 100%;
   display: block;
-  /* GPU compositing: browser renderiza o canvas como layer separado */
-  will-change: contents;
+  /* Promove o canvas para layer de compositing dedicado na GPU */
+  will-change: transform;
 }
 
 .hero__scroll-hint {
