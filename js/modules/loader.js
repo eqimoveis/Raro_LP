@@ -1,4 +1,4 @@
-export function initLoader(gsap) {
+export function initLoader(gsap, heroReady) {
   return new Promise((resolve) => {
     const el     = document.getElementById("page-loader");
     const fill   = el?.querySelector(".page-loader__logo--fill");
@@ -50,12 +50,23 @@ export function initLoader(gsap) {
       });
     };
 
-    const scheduleExit = () => setTimeout(exit, 280);
+    /* ── Estratégia de saída ────────────────────────────
+       Sai quando AMBAS condições forem cumpridas:
+       1. Tempo mínimo da animação do logo (~1.4s)
+       2. Hero sinalizou que o lote crítico de frames está pronto
 
-    if (document.readyState === "complete") {
-      scheduleExit();
-    } else {
-      window.addEventListener("load", scheduleExit, { once: true });
-    }
+       Timeout de segurança (8s) garante que o loader
+       nunca fica preso se algo falhar.
+       ──────────────────────────────────────────────────── */
+    const minAnimation = new Promise(r => setTimeout(r, 1400));
+    const maxTimeout   = new Promise(r => setTimeout(r, 8000));
+    const heroSignal   = heroReady || Promise.resolve();
+
+    Promise.race([
+      Promise.all([minAnimation, heroSignal]),
+      maxTimeout,
+    ]).then(() => {
+      setTimeout(exit, 180);
+    });
   });
 }

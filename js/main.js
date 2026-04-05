@@ -32,12 +32,14 @@ function initLenis() {
 async function onReady() {
   initLenis();
 
-  // Hero inicia em paralelo com o loader — frame 241 carrega enquanto o loader
-  // ainda está visível, então quando o loader sobe o canvas já está pronto.
-  // refreshOnLoaderExit é chamado depois do ScrollTrigger.refresh() pós-loader.
-  const { refreshOnLoaderExit } = initHero(gsap, ScrollTrigger);
+  // Hero inicia em paralelo com o loader — carrega lote crítico de frames
+  // enquanto o loader ainda está visível. readyPromise resolve quando o lote
+  // crítico (~20 frames perto do topo) está decodificado e pronto.
+  const { refreshOnLoaderExit, readyPromise } = initHero(gsap, ScrollTrigger);
 
-  await initLoader(gsap);
+  // Loader sai quando: animação do logo (~1.4s) termina E lote crítico resolve.
+  // Sem mais esperar window.onload (que atrasava por causa de 241 frames).
+  await initLoader(gsap, readyPromise);
 
   // Loader saiu: overflow:hidden removido, layout correto agora.
   // Dois rAFs garantem que o browser processou o reflow antes do refresh.

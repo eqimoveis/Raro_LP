@@ -1,32 +1,27 @@
 /**
- * Hero — scroll-linked frame animation  ·  v4 (DEFINITIVE)
+ * Hero — scroll-linked frame animation  ·  v5 (OPTIMIZED LOAD)
  *
  * Técnica Apple-style: pré-carrega frames WebP → pinta no canvas.
  * Direção: REVERSA — scroll 0% = frame 241 (topo) → scroll 100% = frame 1.
  *
- * ┌────────────────────── Otimizações v4 ───────────────────────┐
- * │ 1. scrub: true — Lenis já suaviza o scroll upstream;        │
- * │    GSAP não adiciona lag extra (sem double-smoothing)        │
- * │ 2. Pool pipeline: workers NÃO aguardam decode() —           │
- * │    download do próximo frame começa imediatamente;           │
- * │    decode ocorre em background em paralelo                   │
- * │ 3. Ordem interleaved binária — garante cobertura uniforme   │
- * │    em poucos frames: após 15 frames carregados, gap máximo  │
- * │    entre frames disponíveis é ≤16. Scroll rápido pro meio   │
- * │    sempre encontra um frame próximo.                         │
- * │ 4. Preload do frame-0241 no HTML — download começa antes    │
- * │    do JS rodar (cache hit quando new Image() é criada)      │
- * │ 5. alpha: false — GPU pula composição de alfa               │
- * │ 6. will-change: transform — canvas em compositing layer     │
- * │ 7. DPR = 1.0 — canvas = CSS pixels                         │
- * │ 8. Mobile: assets/frames-mobile-webp/ (≤767px)             │
+ * ┌────────────────────── Otimizações v5 ───────────────────────┐
+ * │ 1. Lote crítico: 20 frames perto do topo com decode COMPLETO│
+ * │    → elimina stutter na primeira interação de scroll         │
+ * │ 2. readyPromise: sinaliza ao loader quando lote crítico      │
+ * │    está pronto → loader sai ANTES de carregar tudo           │
+ * │ 3. scrub: true — sem double-smoothing (Lenis + GSAP)        │
+ * │ 4. Pool pipeline: download imediato, decode em background    │
+ * │ 5. Ordem interleaved binária para restante (gap ≤16)         │
+ * │ 6. Preload do frame-0241 no HTML (cache hit)                 │
+ * │ 7. alpha: false, DPR = 1.0, will-change: transform          │
  * └─────────────────────────────────────────────────────────────┘
  */
 
 const IS_MOBILE = () => window.matchMedia("(max-width: 767px)").matches;
-const FRAME_COUNT = 241;
-const FRAME_PAD   = 4;
-const POOL_SIZE   = 8;
+const FRAME_COUNT    = 241;
+const FRAME_PAD      = 4;
+const POOL_SIZE      = 8;
+const CRITICAL_COUNT = 20;  // frames perto do topo para decode completo
 
 /* ── Cover-fit: preenche canvas inteiro mantendo aspect ratio ─── */
 function coverFit(ctx, img, cw, ch) {
@@ -44,19 +39,15 @@ function coverFit(ctx, img, cw, ch) {
   ctx.drawImage(img, dx, dy, dw, dh);
 }
 
-/* ── Carrega imagem. awaitDecode=true apenas para o frame inicial ─ */
+/* ── Carrega imagem. awaitDecode=true → aguarda decode completo ─ */
 function loadImg(src, awaitDecode) {
   return new Promise(resolve => {
     const img = new Image();
     img.decoding = "async";
     img.onload = () => {
       if (awaitDecode && img.decode) {
-        // Frame inicial: aguarda decode completo antes de pintar
         img.decode().then(() => resolve(img)).catch(() => resolve(img));
       } else {
-        // Pool: dispara decode em background, libera o worker imediatamente.
-        // Quando drawImage() for chamado, a imagem já estará decodificada
-        // na maioria dos casos (há tempo entre o load e o scroll do usuário).
         img.decode?.();
         resolve(img);
       }
@@ -67,12 +58,12 @@ function loadImg(src, awaitDecode) {
 }
 
 /* ── Download pool com concorrência controlada ──────────────── */
-async function pool(jobs, onFrame, limit) {
+async function pool(jobs, onFrame, limit, awaitDecode = false) {
   let cursor = 0;
   async function worker() {
     while (cursor < jobs.length) {
       const j = jobs[cursor++];
-      const img = await loadImg(j.src, false);
+      const img = await loadImg(j.src, awaitDecode);
       if (img) onFrame(j.idx, img);
     }
   }
@@ -82,20 +73,12 @@ async function pool(jobs, onFrame, limit) {
 }
 
 /* ── Ordem de carregamento interleaved binário ──────────────── */
-// Garante cobertura uniforme: após poucos frames, qualquer ponto
-// do scroll encontra um frame carregado próximo.
-// Exemplo com 241 frames:
-//   Step 128: frame 128
-//   Step 64:  frames 64, 192
-//   Step 32:  frames 32, 96, 160, 224
-//   Step 16:  frames 16, 48, 80, 112, 144, 176, 208, 240
-//   → após 15 frames: gap máximo = 16 (em vez de 226 com ordem linear)
-function buildInterleaved(count, skip) {
-  const visited = new Set([skip]); // frame inicial já carregado
+function buildInterleaved(count, skipSet) {
+  const visited = new Set(skipSet);
   const order   = [];
   let step = 1;
-  while (step < count) step <<= 1; // potência de 2 >= count
-  step >>= 1;                       // maior potência de 2 < count
+  while (step < count) step <<= 1;
+  step >>= 1;
 
   while (step >= 1) {
     for (let i = step - 1; i < count; i += step) {
@@ -121,6 +104,10 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
   let lastIdx   = -1;
   let raf       = false;
   let ready     = false;
+
+  /* Promise que resolve quando o lote crítico está pronto */
+  let resolveReady;
+  const readyPromise = new Promise(r => { resolveReady = r; });
 
   const src = (n) => `${frameDir}/frame-${String(n).padStart(FRAME_PAD, "0")}.webp`;
 
@@ -168,9 +155,6 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
   syncSize();
   window.addEventListener("resize", syncSize, { passive: true });
 
-  // scrub: true — Lenis já suaviza o scroll; GSAP só espelha o valor
-  // do Lenis sem adicionar lag extra. Double-smoothing (scrub numérico
-  // + Lenis) causava até 1.5s de atraso em scroll rápido.
   ScrollTrigger.create({
     trigger: ".hero",
     start:   "top top",
@@ -197,14 +181,18 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
   }
 
   /* ═══════════════════════════════════════════════════════════
-     LOADING STRATEGY v4
+     LOADING STRATEGY v5
      ─────────────────────────────────────────────────────────
-     Fase 1: Frame 241 → cache hit (preloaded no HTML) → instantâneo.
-             awaitDecode=true garante bitmap pronto antes do primeiro paint.
-     Fase 2: Ordem interleaved binária (ver buildInterleaved).
-             8 workers em pipeline: cada worker inicia o próximo
-             download imediatamente após onload, sem aguardar decode().
-             Decode ocorre em background paralelo aos downloads.
+     Fase 1: Frame 241 → cache hit (preloaded no HTML).
+             awaitDecode=true → bitmap pronto antes do primeiro paint.
+
+     Fase 1.5: Lote crítico — 20 frames perto do topo (240→221).
+               São os primeiros que o usuário verá ao rolar.
+               awaitDecode=true → ELIMINA stutter na primeira interação.
+               Ao finalizar, sinaliza readyPromise → loader pode sair.
+
+     Fase 2: Restante em ordem interleaved binária.
+             awaitDecode=false → download rápido em background.
      ═══════════════════════════════════════════════════════════ */
   (async () => {
     // FASE 1: frame inicial — deve estar em cache pelo preload do HTML
@@ -216,9 +204,31 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
       schedulePaint();
     }
 
-    // FASE 2: ordem interleaved — cobertura uniforme imediata
-    const idxOrder = buildInterleaved(FRAME_COUNT, FRAME_COUNT - 1);
-    const jobs = idxOrder.map(i => ({ idx: i, src: src(i + 1) }));
+    // FASE 1.5: lote crítico — frames perto do topo COM decode completo
+    // Frames 240→221 (indices 239→220) = primeiros 20 frames do scroll
+    const criticalJobs = [];
+    const criticalSet  = new Set([FRAME_COUNT - 1]); // frame 241 já carregado
+    for (let i = FRAME_COUNT - 2; i >= Math.max(0, FRAME_COUNT - 1 - CRITICAL_COUNT); i--) {
+      criticalJobs.push({ idx: i, src: src(i + 1) });
+      criticalSet.add(i);
+    }
+
+    await pool(criticalJobs, (idx, img) => {
+      frames[idx] = img;
+      const t   = 1 - Math.max(0, Math.min(1, progress));
+      const cur = Math.round(t * (FRAME_COUNT - 1));
+      if (Math.abs(idx - cur) <= 5) {
+        lastIdx = -1;
+        schedulePaint();
+      }
+    }, POOL_SIZE, true); // awaitDecode = true ← elimina stutter
+
+    // Lote crítico pronto → loader pode sair
+    resolveReady();
+
+    // FASE 2: restante em ordem interleaved (exclui já carregados)
+    const remaining = buildInterleaved(FRAME_COUNT, criticalSet);
+    const jobs = remaining.map(i => ({ idx: i, src: src(i + 1) }));
 
     await pool(jobs, (idx, img) => {
       frames[idx] = img;
@@ -228,7 +238,7 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
         lastIdx = -1;
         schedulePaint();
       }
-    }, POOL_SIZE);
+    }, POOL_SIZE, false); // awaitDecode = false → rápido em background
   })();
 
   function onRefresh() {
@@ -236,7 +246,7 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
     schedulePaint();
   }
 
-  return { onRefresh };
+  return { onRefresh, readyPromise };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -244,7 +254,7 @@ function initFrameScrub(canvas, ctx, gsap, ScrollTrigger, frameDir) {
    ═══════════════════════════════════════════════════════════════ */
 export function initHero(gsap, ScrollTrigger) {
   const canvas = document.getElementById("hero-canvas");
-  if (!canvas) return {};
+  if (!canvas) return { readyPromise: Promise.resolve() };
 
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const ctx = canvas.getContext("2d", { alpha: false });
@@ -255,7 +265,7 @@ export function initHero(gsap, ScrollTrigger) {
     canvas.height = h;
     loadImg(`${dir}/frame-${String(FRAME_COUNT).padStart(FRAME_PAD, "0")}.webp`, true)
       .then(img => { if (img) coverFit(ctx, img, w, h); });
-    return {};
+    return { readyPromise: Promise.resolve() };
   }
 
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -264,6 +274,6 @@ export function initHero(gsap, ScrollTrigger) {
   // Desktop (≥768px): assets/frames-webp/
   const dir = IS_MOBILE() ? "assets/frames-mobile-webp" : "assets/frames-webp";
 
-  const { onRefresh } = initFrameScrub(canvas, ctx, gsap, ScrollTrigger, dir);
-  return { refreshOnLoaderExit: onRefresh };
+  const { onRefresh, readyPromise } = initFrameScrub(canvas, ctx, gsap, ScrollTrigger, dir);
+  return { refreshOnLoaderExit: onRefresh, readyPromise };
 }
