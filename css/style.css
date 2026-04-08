@@ -3468,6 +3468,13 @@ main>section:nth-of-type(10) {
   opacity: 0.45;
 }
 
+/* Bitrix24 embed wrapper - keeps original section rhythm */
+.lead-form--embed {
+  display: block;
+  margin-top: var(--s6);
+  min-height: 420px;
+}
+
 /* ── 18. FOOTER ──────────────────────────────────────────── */
 .site-footer {
   position: relative;
