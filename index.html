@@ -77,8 +77,6 @@
   <link rel="dns-prefetch" href="https://www.google.com" />
   <link rel="preconnect" href="https://maps.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://www.google.com" crossorigin />
-  <link rel="dns-prefetch" href="https://wa.me" />
-
   <!-- Preload do primeiro frame da animação hero — inicia download antes do JS rodar -->
   <link rel="preload" as="image" href="assets/frames-webp/frame-0241.webp" type="image/webp" media="(min-width: 768px)"
     fetchpriority="high" />
@@ -264,8 +262,7 @@
   </script>
 </head>
 
-<body data-whatsapp-phone="5547999999999"
-  data-whatsapp-message="Olá! Gostaria de agendar minha visita ao RARO Praia Brava.">
+<body>
   <!-- Conteúdo acessível para crawlers que não executam JS -->
   <noscript>
     <div style="max-width:60rem;margin:0 auto;padding:2rem;font-family:sans-serif;color:#18140f;line-height:1.7">
@@ -304,7 +301,7 @@
         <li>R$ 1 Bi em VGV entregue</li>
       </ul>
       <h2>Contato</h2>
-      <p>Agende sua visita exclusiva: <a href="https://wa.me/5547999999999">WhatsApp (47) 99999-9999</a></p>
+      <p>Agende sua visita pelo <a href="#contato">formulário de contato</a> no final da página.</p>
       <p><em>Incorporação sujeita a registro conforme Lei 4.591/64. Imagens artísticas. Informações sujeitas a alteração
           sem aviso prévio.</em></p>
     </div>
@@ -342,7 +339,7 @@
         </ul>
       </nav>
       <div class="site-header__cta">
-        <a class="btn btn--shiny btn--sm" href="#contato" data-wa="cta-nav"><span>Agendar visita</span></a>
+        <a class="btn btn--shiny btn--sm" href="#contato"><span>Agendar visita</span></a>
         <button type="button" class="nav-toggle" aria-expanded="false" aria-controls="mobile-drawer"
           aria-label="Abrir menu">
           <span></span><span></span>
@@ -356,7 +353,7 @@
         <a href="#plantas">Plantas</a>
         <a href="#localizacao">Localização</a>
         <a href="#investimento">Investimento</a>
-        <a href="#contato" data-wa="cta-nav-mobile" class="btn btn--shiny"><span>Agendar visita</span></a>
+        <a href="#contato" class="btn btn--shiny"><span>Agendar visita</span></a>
       </nav>
     </div>
     <div class="scroll-progress" aria-hidden="true"><span class="scroll-progress__bar"></span></div>
@@ -537,7 +534,7 @@
         </div>
 
         <div class="section__cta">
-          <a class="btn btn--shiny btn--lg" href="#contato" data-wa="cta-material"><span>Receber o book
+          <a class="btn btn--shiny btn--lg" href="#contato"><span>Receber o book
               completo</span></a>
         </div>
       </div>
@@ -947,7 +944,7 @@
         </div><!-- /.feature-bento -->
 
         <div class="section__cta">
-          <a class="btn btn--shiny btn--lg" href="#contato" data-wa="cta-lazer"><span>Agendar visita
+          <a class="btn btn--shiny btn--lg" href="#contato"><span>Agendar visita
               exclusiva</span></a>
         </div>
       </div>
@@ -1099,7 +1096,7 @@
         </div>
 
         <div class="section__cta">
-          <a class="btn btn--shiny btn--lg" href="#contato" data-wa="cta-plantas"><span>Consultar
+          <a class="btn btn--shiny btn--lg" href="#contato"><span>Consultar
               disponibilidade</span></a>
         </div>
       </div>
@@ -1261,7 +1258,7 @@
           </blockquote>
           <p class="marlon-tag js-marlon-tag">Modelo internacional, natural de Balneário Camboriú. Reconheceu na Brava o
             mesmo padrão que exige no mundo.</p>
-          <a class="btn btn--shiny btn--lg" href="#contato" data-wa="cta-marlon"><span>Viver como Marlon</span></a>
+          <a class="btn btn--shiny btn--lg" href="#contato"><span>Viver como Marlon</span></a>
         </div>
       </div>
     </section>
@@ -1436,9 +1433,8 @@
     </div>
   </footer>
 
-  <!-- Botão flutuante WhatsApp -->
-  <a class="btn-float-wa" href="https://wa.me/5547999999999" target="_blank" rel="noopener noreferrer"
-    aria-label="Falar pelo WhatsApp" data-wa="float">
+  <!-- Botão flutuante (visual WhatsApp) — leva ao formulário Bitrix em #contato -->
+  <a class="btn-float-wa" href="#contato" aria-label="Agendar visita — abrir formulário de contato">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" width="26" height="26">
       <path
         d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
